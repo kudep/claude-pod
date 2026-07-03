@@ -20,6 +20,9 @@ dk_parse_repo() {
   path="${path%.git}"
   DK_OWNER="${path%%/*}"; DK_REPO="${path#*/}"
   [ -n "$DK_OWNER" ] && [ -n "$DK_REPO" ] && [ "$DK_OWNER" != "$path" ] || return 1
+  # Sanitize: owner/repo must be a single plain segment each (no path traversal into
+  # the gh API path like foo/bar/../../evil, no slashes/spaces).
+  [[ "$DK_OWNER" =~ ^[A-Za-z0-9._-]+$ ]] && [[ "$DK_REPO" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
   DK_SLUG="${DK_OWNER}/${DK_REPO}"
 }
 

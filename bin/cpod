@@ -19,6 +19,7 @@ CPOD_RUN_CLAUDE=0
 CPOD_RUN_CMD=""
 CPOD_INHERIT_ENV=0
 CPOD_EXTRA_ENV=()
+CPOD_CLAUDE_HARDENED=0
 CPOD_NET_HOST=0
 CPOD_GPU="auto"           # auto | on | off
 CPOD_DIND="auto"          # auto | on | off
@@ -59,6 +60,8 @@ ${_C_GRN}Ключ (git-доступ к GitHub), режимы:${_C_RST}
 ${_C_GRN}Прочие флаги:${_C_RST}
   --claude              сразу запустить claude при входе (иначе — shell)
   --run "<cmd>"         выполнить команду при входе вместо shell
+  --claude-hardened     смонтировать исполняемую конфигурацию ~/.claude (settings*/plugins/
+                        agents/skills/commands/hooks) read-only — защита хоста от подсадки hook
   --inherit-env         пробросить все переменные среды хоста (кроме секретов)
   --env KEY[=VAL]       пробросить одну переменную (можно повторять)
   --net-host            сеть хоста (удобно для прокси; ослабляет изоляцию)
@@ -90,6 +93,7 @@ while [ $# -gt 0 ]; do
     --run)          CPOD_RUN_CMD="${2:-}"; shift 2 ;;
     --run=*)        CPOD_RUN_CMD="${1#*=}"; shift ;;
     --inherit-env)  CPOD_INHERIT_ENV=1; shift ;;
+    --claude-hardened) CPOD_CLAUDE_HARDENED=1; shift ;;
     --env)          CPOD_EXTRA_ENV+=("${2:-}"); shift 2 ;;
     --env=*)        CPOD_EXTRA_ENV+=("${1#*=}"); shift ;;
     --net-host|--network-host) CPOD_NET_HOST=1; shift ;;
@@ -111,6 +115,7 @@ case "$CPOD_KEY_MODE" in rw|ro|none) ;; *) log_error "--key должен быт�
 
 rt_detect
 mkdir -p "${CPOD_STATE}/containers"
+chmod 700 "${CPOD_STATE}" 2>/dev/null || true   # state holds ephemeral keys/sockets/meta
 
 case "${CMD:-default}" in
   up)            cmd_up ;;

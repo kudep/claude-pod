@@ -11,7 +11,15 @@ git config --global --add safe.directory '*' || true
 
 # When a per-repo deploy key is wired in, route GitHub over SSH and configure it.
 if [ "${CPOD_HAS_KEY:-0}" = "1" ]; then
-  git config --global url."git@github.com:".insteadOf "https://github.com/"
+  # Scope the https->ssh rewrite to THIS repo only. A global rewrite would force
+  # every github https fetch (submodules, pip/go/npm git deps of other repos) over
+  # ssh, where the single-repo deploy key would be denied.
+  if [ -n "${CPOD_GIT_REPO:-}" ]; then
+    git config --global url."git@github.com:${CPOD_GIT_REPO}.git".insteadOf "https://github.com/${CPOD_GIT_REPO}.git"
+    git config --global url."git@github.com:${CPOD_GIT_REPO}".insteadOf   "https://github.com/${CPOD_GIT_REPO}"
+  else
+    git config --global url."git@github.com:".insteadOf "https://github.com/"
+  fi
   mkdir -p "${HOME}/.ssh"; chmod 700 "${HOME}/.ssh"
   {
     echo "Host github.com"

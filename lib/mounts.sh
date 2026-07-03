@@ -8,17 +8,29 @@ _CPOD_ENV_DENY_RE='^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|.*_API_KEY|.*_API
 # Project mounted at the *same* absolute path as on the host so that
 # ~/.claude/projects/<slug> keeps matching and sessions continue seamlessly.
 mounts_add_project() {
+  case "$PROJECT_DIR" in
+    *:*) log_die "путь проекта содержит ':' — bind-mount невозможен: ${PROJECT_DIR}" ;;
+  esac
   RUN_ARGS+=( -v "${PROJECT_DIR}:${PROJECT_DIR}" -w "${PROJECT_DIR}" )
 }
 
-# ~/.claude hybrid: whole dir rw, credentials file ro on top.
+# ~/.claude hybrid: whole dir rw, credentials file ro on top. With --claude-hardened,
+# the executable-config surface (settings*.json, plugins/agents/skills/commands/hooks)
+# is also mounted ro so a compromised container can't plant a hook that later runs on
+# the HOST. Sessions/history/projects stay rw for seamless continuation.
 mounts_add_claude() {
   local hc="${HOST_HOME}/.claude" cc="${CONTAINER_HOME}/.claude"
   [ -d "$hc" ] || { log_warn "на хосте нет ${hc} — контейнер стартует без общих настроек Claude"; return 0; }
   RUN_ARGS+=( -v "${hc}:${cc}" )
-  if [ -f "${hc}/.credentials.json" ]; then
-    RUN_ARGS+=( -v "${hc}/.credentials.json:${cc}/.credentials.json:ro" )
+  [ -f "${hc}/.credentials.json" ] && RUN_ARGS+=( -v "${hc}/.credentials.json:${cc}/.credentials.json:ro" )
+  if [ "${CPOD_CLAUDE_HARDENED:-0}" = "1" ]; then
+    local p
+    for p in settings.json settings.local.json plugins agents skills commands hooks; do
+      [ -e "${hc}/${p}" ] && RUN_ARGS+=( -v "${hc}/${p}:${cc}/${p}:ro" )
+    done
+    log_step ".claude: hardened — settings*/plugins/agents/skills/commands/hooks смонтированы ro"
   fi
+  return 0
 }
 
 # Proxy passthrough with localhost -> host-gateway rewrite (skipped under --net-host).

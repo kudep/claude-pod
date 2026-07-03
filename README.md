@@ -61,6 +61,7 @@ cpod up --key-file   # доставить ключ файлом (ro) вмест�
 ```bash
 cpod up --claude               # сразу запустить claude (по умолчанию — просто shell)
 cpod up --run "pytest -q"      # выполнить команду при входе
+cpod up --claude-hardened      # ~/.claude: settings/plugins/hooks ro (защита хоста от подсадки hook)
 cpod up --inherit-env          # пробросить все host-переменные (кроме секретов)
 cpod up --env FOO=bar          # пробросить одну переменную
 cpod up --net-host             # сеть хоста (удобно для прокси; ослабляет изоляцию)

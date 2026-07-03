@@ -64,6 +64,9 @@ cmd_up() {
     return
   fi
   image_ensure
+  # If a previous run left state (e.g. container removed out-of-band, not via `down`),
+  # revoke its orphaned deploy key before we overwrite the metadata.
+  [ -f "${CSTATE}/meta" ] && dk_revoke "$CSTATE"
   mkdir -p "$CSTATE"; : > "${CSTATE}/meta"
   { echo "project=${PROJECT_DIR}"; echo "runtime=${RT}"; } >> "${CSTATE}/meta"
 
@@ -88,7 +91,11 @@ cmd_up() {
   [ -n "${DK_SLUG:-}" ]  && RUN_ARGS+=( --label "cpod.repo=${DK_SLUG}" )
 
   log_info "создаю контейнер ${CNAME}"
-  rt run -d "${RUN_ARGS[@]}" "$IMAGE" >/dev/null || log_die "не удалось запустить контейнер"
+  if ! rt run -d "${RUN_ARGS[@]}" "$IMAGE" >/dev/null; then
+    # Don't leave the just-registered deploy key / agent orphaned on failure.
+    dk_revoke "$CSTATE"; rm -rf "$CSTATE"
+    log_die "не удалось запустить контейнер"
+  fi
   log_ok "контейнер ${CNAME} запущен (${RT})"
   [ "${CPOD_RUN_CLAUDE}" = "1" ] || [ -n "${CPOD_RUN_CMD}" ] || \
     log_info "вход в shell (claude не запущен автоматически; наберите 'claude' вручную)"

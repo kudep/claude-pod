@@ -38,6 +38,17 @@ teardown() { cpod_cleanup; }
   [ "$("$RT" container inspect -f '{{.HostConfig.NetworkMode}}' "$CPOD_CNAME")" = "host" ]
 }
 
+@test "--claude-hardened: settings.json смонтирован read-only" {
+  [ -f "$HOME/.claude/settings.json" ] || skip "нет ~/.claude/settings.json"
+  make_project
+  CPOD_NO_ATTACH=1 run cpod up --key none --claude-hardened
+  [ "$status" -eq 0 ]
+  resolve_cname
+  # config пишется в обычном режиме, но под hardened — settings.json ro
+  run in_pod "echo x >> ~/.claude/settings.json"
+  [ "$status" -ne 0 ]
+}
+
 @test "прокси: http_proxy проброшен и localhost переписан на host-gateway" {
   make_project
   export http_proxy="http://localhost:1084"
