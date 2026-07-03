@@ -1,0 +1,6 @@
+# Локальные настройки Claude Code (не для публикации)
+.claude/settings.local.json
+
+# Прочее локальное окружение
+*.log
+.DS_Store
