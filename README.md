@@ -1,92 +1,106 @@
 # claude-pod
 
-Запуск **Claude Code в изолированном контейнере** поверх текущего репозитория — с вашими
-настройками и прокси, но **без личных ключей и credentials основного GitHub-аккаунта внутри
-контейнера**. Вместо них создаётся отдельный **deploy key**, привязанный *ровно к этому одному
-репозиторию* (регистрируется через `gh`, доставляется в контейнер через ssh-agent — приватный ключ
-не попадает на диск контейнера) и **отзывается** при остановке.
+Run **Claude Code in an isolated container** on top of the current repository — with your
+settings and proxy, but **without your main GitHub account's keys or credentials inside the
+container**. Instead it creates a dedicated **deploy key** bound to *this one repository*
+(registered via `gh`, delivered into the container through ssh-agent — the private key never
+lands on the container disk) and **revokes** it when the container is torn down.
 
-Работает и на **podman** (по умолчанию, rootless), и на **docker**. Контейнер — под
-непривилегированным пользователем; окружение: Ubuntu/CUDA + Node (для Claude Code) + `uv` +
-build-toolchain. GPU пробрасывается автоматически, если есть.
+Works with both **podman** (default, rootless) and **docker**. The container runs as a
+non-root user; the environment is Ubuntu/CUDA + Node (for Claude Code) + `uv` + a build
+toolchain. GPU is passed through automatically when available.
 
-Основная команда — **`cpod`** (синоним `claude-pod`).
+Main command — **`cpod`** (alias `claude-pod`).
 
-## Установка одной строкой
+## One-line install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kudep/claude-pod/main/install.sh | bash
 ```
 
-Ставит скрипты в `~/.local/share/claude-pod` и кладёт команды `cpod`/`claude-pod` в
-`~/.local/bin`. Локально то же самое: `git clone … && ./install.sh`.
+Installs the scripts into `~/.local/share/claude-pod`, puts `cpod`/`claude-pod` into
+`~/.local/bin`, and installs shell completions for bash/zsh/fish. Locally the same:
+`git clone … && ./install.sh`.
 
-## Быстрый старт
+Re-running the installer upgrades an existing install in place: it detects the old
+version, reports it (`updating 0.1.0 -> 0.2.0`), and reinstalls — wiping the previous
+managed files first so components dropped in the new version don't linger as leftovers.
 
-Из каталога любого проекта:
+## Quick start
+
+From any project directory:
 
 ```bash
-cpod up        # сценарий 1: собрать образ (один раз), создать контейнер и войти в shell
-# ...внутри контейнера — обычный shell в том же пути, что и на хосте; наберите `claude`
+cpod up        # scenario 1: build the image (once), create a container and enter a shell
+# ...inside: a normal shell at the same path as on the host; type `claude`
 ```
 
-Три сценария работы:
+Three lifecycle scenarios:
 
-| Команда        | Что делает                                                        |
-|----------------|-------------------------------------------------------------------|
-| `cpod up`      | создать **новый** контейнер и войти (сценарий 1)                   |
-| `cpod start`   | запустить **ранее созданный** остановленный контейнер (сценарий 2) |
-| `cpod attach`  | подключиться к **уже работающему** контейнеру, новая сессия (сц. 3)|
-| `cpod ls`      | список контейнеров для этого проекта (`--all` — для всех)          |
-| `cpod stop`    | остановить контейнер (не удаляя)                                   |
-| `cpod down`    | остановить, удалить контейнер и **отозвать deploy key**            |
+| Command       | What it does                                                    |
+|---------------|-----------------------------------------------------------------|
+| `cpod up`     | create a **new** container and enter it (scenario 1)            |
+| `cpod start`  | start a **previously created**, stopped container (scenario 2) |
+| `cpod attach` | connect to an **already running** container, new session (3)    |
+| `cpod ls`     | list containers for this project (`--all` for every one)        |
+| `cpod stop`   | stop the container (without removing it)                        |
+| `cpod down`   | stop, remove the container and **revoke the deploy key**        |
 
-Без аргумента `cpod` выбирает режим сам: нет контейнера → `up`, остановлен → `start`,
-работает → `attach`.
+With no argument, `cpod` picks the mode itself: no container → `up`, stopped → `start`,
+running → `attach`.
 
-## Режимы git-доступа (deploy key)
+## Git access modes (deploy key)
 
 ```bash
-cpod up --key rw     # по умолчанию: push РАЗРЕШЁН, но только в этот один репозиторий
-cpod up --key ro     # только чтение: push запрещён
-cpod up --key none   # без ключа: работа только с локальной копией
-cpod up --key-file   # доставить ключ файлом (ro) вместо ssh-agent
+cpod up --key rw     # default: push ALLOWED, but only to this one repository
+cpod up --key ro     # read-only: push is rejected
+cpod up --key none   # no key: work on the local copy only
+cpod up --key-file   # deliver the key as a file (ro) instead of ssh-agent
 ```
 
-Если каталог не git-репозиторий или `origin` не на GitHub — блок ключей просто пропускается,
-контейнер всё равно стартует (git работает локально).
+If the directory is not a git repo or `origin` is not on GitHub, the key block is simply
+skipped and the container still starts (git works locally).
 
-## Полезные флаги
+## Handy flags
 
 ```bash
-cpod up --claude               # сразу запустить claude (по умолчанию — просто shell)
-cpod up --run "pytest -q"      # выполнить команду при входе
-cpod up --claude-hardened      # ~/.claude: settings/plugins/hooks ro (защита хоста от подсадки hook)
-cpod up --inherit-env          # пробросить все host-переменные (кроме секретов)
-cpod up --env FOO=bar          # пробросить одну переменную
-cpod up --net-host             # сеть хоста (удобно для прокси; ослабляет изоляцию)
-cpod up --gpu / --no-gpu       # принудительно вкл/выкл GPU (по умолчанию — автодетект)
-cpod up --docker / --no-docker # проброс docker-сокета (по умолчанию — авто по проекту)
-cpod up --runtime docker       # выбрать runtime вручную
+cpod up --claude               # run claude right away (default is just a shell)
+cpod up --run "pytest -q"      # run a command on entry
+cpod up --claude-hardened      # ~/.claude: settings/plugins/hooks ro (protect host from a planted hook)
+cpod up --inherit-env          # forward all host variables (except secrets)
+cpod up --env FOO=bar          # forward a single variable
+cpod up -p 8080:80             # publish a port (docker-style); repeatable
+cpod up -p 127.0.0.1:5432:5432/tcp
+cpod up --net-host             # host network (handy for proxies; weakens isolation; ignores -p)
+cpod up --gpu / --no-gpu       # force GPU on/off (default: autodetect)
+cpod up --docker / --no-docker # docker socket passthrough (default: auto per project)
+cpod up --runtime docker       # pick the runtime manually
 ```
 
-## Требования на хосте
+### Publishing ports vs host network
 
-- `podman` **или** `docker`
-- `git`, `gh` (авторизованный: `gh auth login`) — нужны для регистрации deploy key
-- `ssh-agent`/`ssh-keygen` (обычно есть) — для доставки ключа без записи на диск
-- Для GPU: драйвер NVIDIA + container toolkit (иначе — CPU-режим)
+Prefer `-p/--port` when you only want specific ports reachable — it keeps the container on
+its own network and publishes just those ports (exactly like `docker run -p`). Use
+`--net-host` only when you want the container to share the host's whole network stack (e.g.
+to reach a `localhost` proxy directly); `-p` is ignored in that mode.
 
-## Документация
+## Host requirements
 
-- [`docs/TECHNOLOGY.md`](docs/TECHNOLOGY.md) — как всё устроено: изоляция, deploy key,
-  совпадение путей `~/.claude`, dual-runtime.
-- [`docs/PROS_CONS.md`](docs/PROS_CONS.md) — плюсы и минусы подхода, сравнение с альтернативами.
-- [`docs/SECURITY.md`](docs/SECURITY.md) — модель угроз и **остаточные риски** (обязательно к прочтению).
+- `podman` **or** `docker`
+- `git`, `gh` (authenticated: `gh auth login`) — needed to register the deploy key
+- `ssh-agent`/`ssh-keygen` (usually present) — to deliver the key without writing it to disk
+- For GPU: NVIDIA driver + container toolkit (otherwise CPU mode)
 
-## Удаление
+## Documentation
+
+- [`docs/TECHNOLOGY.md`](docs/TECHNOLOGY.md) — how it works: isolation, the deploy key,
+  `~/.claude` path matching, dual-runtime.
+- [`docs/PROS_CONS.md`](docs/PROS_CONS.md) — pros and cons, comparison with alternatives.
+- [`docs/SECURITY.md`](docs/SECURITY.md) — threat model and **residual risks** (please read).
+
+## Uninstall
 
 ```bash
-# сначала в каждом проекте: cpod down   (чтобы отозвать deploy key)
+# first, in each project: cpod down   (to revoke the deploy key)
 curl -fsSL https://raw.githubusercontent.com/kudep/claude-pod/main/uninstall.sh | bash
 ```
