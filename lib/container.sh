@@ -23,7 +23,7 @@ image_ensure() {
   if [ "${CPOD_REBUILD:-0}" != "1" ] && rt image inspect "$IMAGE" >/dev/null 2>&1; then
     return 0
   fi
-  log_info "собираю образ ${IMAGE} (runtime=${RT}, база=${CPOD_BASE_IMAGE})…"
+  log_info "building image ${IMAGE} (runtime=${RT}, base=${CPOD_BASE_IMAGE})…"
   # Build with host networking so a localhost proxy is reachable; forward proxy
   # vars as predefined build-args (docker/podman do not persist these in the image).
   local -a proxy_args=() v
@@ -36,8 +36,8 @@ image_ensure() {
     --build-arg "HOST_UID=${HOST_UID}" \
     --build-arg "HOST_GID=${HOST_GID}" \
     --build-arg "HOST_HOME=${HOST_HOME}" \
-    -t "$IMAGE" "${CPOD_HOME}/image" || log_die "сборка образа не удалась"
-  log_ok "образ ${IMAGE} готов"
+    -t "$IMAGE" "${CPOD_HOME}/image" || log_die "image build failed"
+  log_ok "image ${IMAGE} ready"
 }
 
 # Drop the user into the container honoring --claude / --run / default shell.
@@ -59,7 +59,7 @@ login_exec() {
 cmd_up() {
   container_name
   if container_exists; then
-    log_warn "контейнер ${CNAME} уже существует"
+    log_warn "container ${CNAME} already exists"
     if container_running; then cmd_attach; else cmd_start; fi
     return
   fi
@@ -81,6 +81,7 @@ cmd_up() {
   mounts_add_project
   mounts_add_claude
   mounts_add_net
+  mounts_add_ports
   mounts_add_proxy
   mounts_add_env
   gpu_add
@@ -90,61 +91,61 @@ cmd_up() {
   [ -n "${DK_KEYID:-}" ] && RUN_ARGS+=( --label "cpod.keyid=${DK_KEYID}" )
   [ -n "${DK_SLUG:-}" ]  && RUN_ARGS+=( --label "cpod.repo=${DK_SLUG}" )
 
-  log_info "создаю контейнер ${CNAME}"
+  log_info "creating container ${CNAME}"
   if ! rt run -d "${RUN_ARGS[@]}" "$IMAGE" >/dev/null; then
     # Don't leave the just-registered deploy key / agent orphaned on failure.
     dk_revoke "$CSTATE"; rm -rf "$CSTATE"
-    log_die "не удалось запустить контейнер"
+    log_die "failed to start the container"
   fi
-  log_ok "контейнер ${CNAME} запущен (${RT})"
+  log_ok "container ${CNAME} started (${RT})"
   [ "${CPOD_RUN_CLAUDE}" = "1" ] || [ -n "${CPOD_RUN_CMD}" ] || \
-    log_info "вход в shell (claude не запущен автоматически; наберите 'claude' вручную)"
+    log_info "entering shell (claude is not auto-started; run 'claude' manually)"
   login_exec
 }
 
 cmd_start() {
   container_name
-  container_exists || log_die "нет контейнера для этого проекта — используйте: cpod up"
+  container_exists || log_die "no container for this project — use: cpod up"
   if ! container_running; then
-    rt start "$CNAME" >/dev/null || log_die "не удалось запустить ${CNAME}"
-    log_ok "контейнер ${CNAME} запущен"
+    rt start "$CNAME" >/dev/null || log_die "failed to start ${CNAME}"
+    log_ok "container ${CNAME} started"
   fi
   login_exec
 }
 
 cmd_attach() {
   container_name
-  container_exists || log_die "нет контейнера для этого проекта — используйте: cpod up"
-  container_running || { log_info "контейнер остановлен — поднимаю"; cmd_start; return; }
+  container_exists || log_die "no container for this project — use: cpod up"
+  container_running || { log_info "container is stopped — bringing it up"; cmd_start; return; }
   login_exec
 }
 
 cmd_stop() {
   container_name
-  container_exists || log_die "нет контейнера для этого проекта"
-  rt stop "$CNAME" >/dev/null && log_ok "остановлен ${CNAME}"
+  container_exists || log_die "no container for this project"
+  rt stop "$CNAME" >/dev/null && log_ok "stopped ${CNAME}"
 }
 
 cmd_down() {
   container_name
   if [ ! -d "$CSTATE" ] && ! container_exists; then
-    log_warn "нет контейнера/состояния для ${PROJECT_DIR}"; return 0
+    log_warn "no container/state for ${PROJECT_DIR}"; return 0
   fi
   dk_revoke "$CSTATE"
   if container_exists; then
-    rt rm -f "$CNAME" >/dev/null 2>&1 && log_ok "контейнер ${CNAME} удалён"
+    rt rm -f "$CNAME" >/dev/null 2>&1 && log_ok "container ${CNAME} removed"
   fi
   rm -rf "$CSTATE"
 }
 
 cmd_ls() {
   local -a f=( --filter "label=cpod.managed=1" )
-  local scope="все проекты"
+  local scope="all projects"
   if [ "${CPOD_ALL:-0}" != "1" ]; then
     f+=( --filter "label=cpod.project=${PROJECT_DIR}" )
     scope="${PROJECT_DIR}"
   fi
-  printf '%s[cpod]%s контейнеры (%s):\n' "$_C_BLU" "$_C_RST" "$scope" >&2
+  printf '%s[cpod]%s containers (%s):\n' "$_C_BLU" "$_C_RST" "$scope" >&2
   printf '%-40s %-22s %s\n' "NAME" "STATUS" "REPO"
   # Only {{.Names}} in ps (docker's {{.Label "x"}} is unsupported by podman); the
   # repo label is read per-container via inspect, which both runtimes support.
@@ -163,10 +164,10 @@ cmd_status() {
   container_name
   if container_exists; then
     local st; st="$(rt container inspect -f '{{.State.Status}}' "$CNAME" 2>/dev/null)"
-    log_info "контейнер ${CNAME}: ${st}"
+    log_info "container ${CNAME}: ${st}"
     [ -f "${CSTATE}/meta" ] && sed 's/^/    /' "${CSTATE}/meta" >&2
   else
-    log_info "для ${PROJECT_DIR} контейнера нет (cpod up — создать)"
+    log_info "no container for ${PROJECT_DIR} (cpod up — create one)"
   fi
 }
 

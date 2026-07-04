@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# lib/mounts.sh — bind mounts, ~/.claude hybrid, proxy/env, networking.
+# lib/mounts.sh — bind mounts, ~/.claude hybrid, proxy/env, networking, ports.
 # All functions append to the global RUN_ARGS array declared by bin/cpod.
 
 # Secrets never forwarded even with --inherit-env (avoid leaking the main account).
@@ -9,7 +9,7 @@ _CPOD_ENV_DENY_RE='^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|.*_API_KEY|.*_API
 # ~/.claude/projects/<slug> keeps matching and sessions continue seamlessly.
 mounts_add_project() {
   case "$PROJECT_DIR" in
-    *:*) log_die "путь проекта содержит ':' — bind-mount невозможен: ${PROJECT_DIR}" ;;
+    *:*) log_die "project path contains ':' — bind mount is not possible: ${PROJECT_DIR}" ;;
   esac
   RUN_ARGS+=( -v "${PROJECT_DIR}:${PROJECT_DIR}" -w "${PROJECT_DIR}" )
 }
@@ -20,7 +20,7 @@ mounts_add_project() {
 # the HOST. Sessions/history/projects stay rw for seamless continuation.
 mounts_add_claude() {
   local hc="${HOST_HOME}/.claude" cc="${CONTAINER_HOME}/.claude"
-  [ -d "$hc" ] || { log_warn "на хосте нет ${hc} — контейнер стартует без общих настроек Claude"; return 0; }
+  [ -d "$hc" ] || { log_warn "host has no ${hc} — container starts without shared Claude settings"; return 0; }
   RUN_ARGS+=( -v "${hc}:${cc}" )
   [ -f "${hc}/.credentials.json" ] && RUN_ARGS+=( -v "${hc}/.credentials.json:${cc}/.credentials.json:ro" )
   if [ "${CPOD_CLAUDE_HARDENED:-0}" = "1" ]; then
@@ -28,7 +28,7 @@ mounts_add_claude() {
     for p in settings.json settings.local.json plugins agents skills commands hooks; do
       [ -e "${hc}/${p}" ] && RUN_ARGS+=( -v "${hc}/${p}:${cc}/${p}:ro" )
     done
-    log_step ".claude: hardened — settings*/plugins/agents/skills/commands/hooks смонтированы ro"
+    log_step ".claude: hardened — settings*/plugins/agents/skills/commands/hooks mounted ro"
   fi
   return 0
 }
@@ -74,4 +74,19 @@ mounts_add_net() {
   else
     local a; while IFS= read -r a; do [ -n "$a" ] && RUN_ARGS+=( "$a" ); done < <(rt_host_gateway_args)
   fi
+}
+
+# Port publishing (docker-style -p/--port), e.g. 8080:80, 127.0.0.1:8080:80, 8080:80/udp.
+# Ignored under --net-host (host network publishes nothing).
+mounts_add_ports() {
+  [ "${#CPOD_PORTS[@]}" -gt 0 ] || return 0
+  if [ "${CPOD_NET_HOST}" = "1" ]; then
+    log_warn "-p/--port is ignored with --net-host (host network); drop --net-host to publish ports"
+    return 0
+  fi
+  local p
+  for p in "${CPOD_PORTS[@]}"; do
+    [ -n "$p" ] && RUN_ARGS+=( -p "$p" )
+  done
+  log_step "published ports: ${CPOD_PORTS[*]}"
 }

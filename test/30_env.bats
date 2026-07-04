@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Env passthrough, proxy, networking.
+# Env passthrough, proxy, networking, port publishing.
 load helpers
 
 setup() {
@@ -9,7 +9,7 @@ setup() {
 }
 teardown() { cpod_cleanup; }
 
-@test "--inherit-env пробрасывает обычные, но НЕ секреты из денилиста" {
+@test "--inherit-env forwards ordinary vars but NOT denylisted secrets" {
   make_project
   export CPOD_MARKER_VALUE="hello-cpod"
   export GH_TOKEN="should-not-leak"
@@ -22,7 +22,7 @@ teardown() { cpod_cleanup; }
   [ -z "$(in_pod 'echo $MY_API_KEY')" ]
 }
 
-@test "--env пробрасывает одну переменную" {
+@test "--env forwards a single variable" {
   make_project
   CPOD_NO_ATTACH=1 run cpod up --key none --env FOO=barbaz
   [ "$status" -eq 0 ]
@@ -30,7 +30,19 @@ teardown() { cpod_cleanup; }
   [ "$(in_pod 'echo $FOO')" = "barbaz" ]
 }
 
-@test "--net-host: контейнер в сети хоста" {
+@test "-p publishes a specific port (no host network)" {
+  make_project
+  CPOD_NO_ATTACH=1 run cpod up --key none -p 18080:80
+  [ "$status" -eq 0 ]
+  resolve_cname
+  run "$RT" container inspect -f '{{.HostConfig.PortBindings}}' "$CPOD_CNAME"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"18080"* ]]
+  # not host network
+  [ "$("$RT" container inspect -f '{{.HostConfig.NetworkMode}}' "$CPOD_CNAME")" != "host" ]
+}
+
+@test "--net-host: container on the host network" {
   make_project
   CPOD_NO_ATTACH=1 run cpod up --key none --net-host
   [ "$status" -eq 0 ]
@@ -38,18 +50,18 @@ teardown() { cpod_cleanup; }
   [ "$("$RT" container inspect -f '{{.HostConfig.NetworkMode}}' "$CPOD_CNAME")" = "host" ]
 }
 
-@test "--claude-hardened: settings.json смонтирован read-only" {
-  [ -f "$HOME/.claude/settings.json" ] || skip "нет ~/.claude/settings.json"
+@test "--claude-hardened: settings.json mounted read-only" {
+  [ -f "$HOME/.claude/settings.json" ] || skip "no ~/.claude/settings.json"
   make_project
   CPOD_NO_ATTACH=1 run cpod up --key none --claude-hardened
   [ "$status" -eq 0 ]
   resolve_cname
-  # config пишется в обычном режиме, но под hardened — settings.json ro
+  # config is writable normally, but under hardened settings.json is ro
   run in_pod "echo x >> ~/.claude/settings.json"
   [ "$status" -ne 0 ]
 }
 
-@test "прокси: http_proxy проброшен и localhost переписан на host-gateway" {
+@test "proxy: http_proxy forwarded and localhost rewritten to host-gateway" {
   make_project
   export http_proxy="http://localhost:1084"
   CPOD_NO_ATTACH=1 run cpod up --key none

@@ -1,0 +1,28 @@
+#compdef cpod claude-pod
+# zsh completion for cpod / claude-pod
+# Install: copy to a dir in $fpath, e.g. ${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_cpod
+
+_cpod() {
+  _arguments -s \
+    '--key[git access mode]:mode:(rw ro none)' \
+    '--key-file[deliver the deploy key as a file instead of ssh-agent]' \
+    '--claude[run claude on entry instead of a shell]' \
+    '--run[run a command on entry]:command:' \
+    '--claude-hardened[mount executable ~/.claude config read-only]' \
+    '--inherit-env[forward all host env except secrets]' \
+    '*--env[forward one environment variable]:KEY=VAL:' \
+    '*-p[publish a port (docker-style)]:port spec:' \
+    '*--port[publish a port (docker-style)]:port spec:' \
+    '--net-host[use the host network]' \
+    '--gpu[force GPU on]' \
+    '--no-gpu[force GPU off]' \
+    '--docker[enable docker socket passthrough]' \
+    '--no-docker[disable docker socket passthrough]' \
+    '--runtime[container runtime]:runtime:(podman docker)' \
+    '--rebuild[rebuild the image]' \
+    '--all[list containers of all projects]' \
+    '(-h --help)'{-h,--help}'[show help]' \
+    '1:command:(up start attach shell stop down ls list status build help)'
+}
+
+_cpod "$@"

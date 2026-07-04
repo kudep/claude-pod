@@ -1,0 +1,37 @@
+# fish completion for cpod / claude-pod
+# Install: copy to ${XDG_CONFIG_HOME:-~/.config}/fish/completions/cpod.fish
+
+for cmd in cpod claude-pod
+    # commands (only as the first non-flag token)
+    complete -c $cmd -f
+    complete -c $cmd -n __fish_use_subcommand -a up      -d 'create and start a new container'
+    complete -c $cmd -n __fish_use_subcommand -a start   -d 'start a stopped container'
+    complete -c $cmd -n __fish_use_subcommand -a attach  -d 'attach to a running container'
+    complete -c $cmd -n __fish_use_subcommand -a shell   -d 'attach to a running container'
+    complete -c $cmd -n __fish_use_subcommand -a stop    -d 'stop the container'
+    complete -c $cmd -n __fish_use_subcommand -a down    -d 'remove container and revoke deploy key'
+    complete -c $cmd -n __fish_use_subcommand -a ls      -d 'list containers for this project'
+    complete -c $cmd -n __fish_use_subcommand -a list    -d 'list containers for this project'
+    complete -c $cmd -n __fish_use_subcommand -a status  -d 'container status'
+    complete -c $cmd -n __fish_use_subcommand -a build   -d 'build the image'
+    complete -c $cmd -n __fish_use_subcommand -a help    -d 'show help'
+
+    # flags (available anywhere)
+    complete -c $cmd -l key            -x -a 'rw ro none' -d 'git access mode'
+    complete -c $cmd -l key-file       -d 'deliver deploy key as a file'
+    complete -c $cmd -l claude         -d 'run claude on entry'
+    complete -c $cmd -l run            -x -d 'run a command on entry'
+    complete -c $cmd -l claude-hardened -d 'mount executable ~/.claude config ro'
+    complete -c $cmd -l inherit-env    -d 'forward host env except secrets'
+    complete -c $cmd -l env            -x -d 'forward one variable KEY=VAL'
+    complete -c $cmd -s p -l port      -x -d 'publish a port (docker-style)'
+    complete -c $cmd -l net-host       -d 'use the host network'
+    complete -c $cmd -l gpu            -d 'force GPU on'
+    complete -c $cmd -l no-gpu         -d 'force GPU off'
+    complete -c $cmd -l docker         -d 'enable docker socket passthrough'
+    complete -c $cmd -l no-docker      -d 'disable docker socket passthrough'
+    complete -c $cmd -l runtime        -x -a 'podman docker' -d 'container runtime'
+    complete -c $cmd -l rebuild        -d 'rebuild the image'
+    complete -c $cmd -l all            -d 'list containers of all projects'
+    complete -c $cmd -s h -l help      -d 'show help'
+end

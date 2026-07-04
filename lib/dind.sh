@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# lib/dind.sh — optional Docker access inside the container via host socket.
+# lib/dind.sh — optional Docker access inside the container via the host socket.
 # CPOD_DIND: auto | on | off ; CPOD_DIND_EXPLICIT: 1 if user passed --docker/--no-docker.
 # Appends to RUN_ARGS.
 
@@ -19,8 +19,8 @@ dind_add() {
       if dind_project_uses_docker; then
         enable=1
         if [ "${CPOD_DIND_EXPLICIT}" != "1" ]; then
-          log_warn "в проекте найден docker (Dockerfile/compose) — включаю проброс docker-сокета."
-          log_warn "  это ~= root на хосте. Отключить: --no-docker. Задать явно заранее: --docker."
+          log_warn "docker found in the project (Dockerfile/compose) — enabling docker socket passthrough."
+          log_warn "  this is ~= root on the host. Disable: --no-docker. Set explicitly up front: --docker."
         fi
       fi
       ;;
@@ -29,7 +29,7 @@ dind_add() {
 
   local sock="/var/run/docker.sock"
   if [ ! -S "$sock" ]; then
-    log_warn "docker-сокет ${sock} не найден на хосте — DinD пропущен"
+    log_warn "docker socket ${sock} not found on the host — DinD skipped"
     return 0
   fi
   RUN_ARGS+=( -v "${sock}:${sock}" )
@@ -37,5 +37,5 @@ dind_add() {
   local gid
   gid="$(stat -c '%g' "$sock" 2>/dev/null || echo)"
   [ -n "$gid" ] && RUN_ARGS+=( --group-add "$gid" )
-  log_step "DinD: проброшен ${sock}"
+  log_step "DinD: passed through ${sock}"
 }

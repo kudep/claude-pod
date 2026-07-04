@@ -12,29 +12,29 @@ setup() {
 teardown() { cpod_cleanup; }
 
 clone_test_repo() {
-  [ -n "$TEST_REPO" ] || skip "нужен CLAUDE_POD_TEST_REPO=owner/repo (мутирующий GitHub-тест ПРОПУЩЕН, не тихо)"
-  command -v gh >/dev/null && gh auth status >/dev/null 2>&1 || skip "gh не авторизован"
+  [ -n "$TEST_REPO" ] || skip "need CLAUDE_POD_TEST_REPO=owner/repo (mutating GitHub test SKIPPED, not silently)"
+  command -v gh >/dev/null && gh auth status >/dev/null 2>&1 || skip "gh not authenticated"
   cd "$BATS_TEST_TMPDIR"
-  gh repo clone "$TEST_REPO" proj -- -q || skip "не удалось клонировать $TEST_REPO"
+  gh repo clone "$TEST_REPO" proj -- -q || skip "could not clone $TEST_REPO"
   cd proj; PROJECT="$PWD"
 }
 
-@test "ssh-agent: приватного ключа НЕТ на диске контейнера, но push работает (rw)" {
+@test "ssh-agent: no private key on the container disk, but push works (rw)" {
   clone_test_repo
   CPOD_NO_ATTACH=1 run cpod up --key rw
   [ "$status" -eq 0 ]
   resolve_cname
-  # ключа-файла быть не должно (доставка через agent)
+  # no key file — delivery is via the agent
   run in_pod "test -f ~/.ssh/id_ed25519"
   [ "$status" -ne 0 ]
-  # SSH_AUTH_SOCK проброшен
+  # SSH_AUTH_SOCK is forwarded
   [ -n "$(in_pod 'echo $SSH_AUTH_SOCK')" ]
-  # push временной ветки проходит и затем удаляется
+  # pushing a temp branch works and is then deleted
   in_pod "git checkout -q -b cpod-test-$$ && git commit -q --allow-empty -m cpod-test && git push -q origin cpod-test-$$"
   in_pod "git push -q origin --delete cpod-test-$$"
 }
 
-@test "deploy key ro: push отклонён" {
+@test "deploy key ro: push is rejected" {
   clone_test_repo
   CPOD_NO_ATTACH=1 run cpod up --key ro
   [ "$status" -eq 0 ]
@@ -43,7 +43,7 @@ clone_test_repo() {
   [ "$status" -ne 0 ]
 }
 
-@test "--key-file: ключ доставлен файлом (ro)" {
+@test "--key-file: key delivered as a file (ro)" {
   clone_test_repo
   CPOD_NO_ATTACH=1 run cpod up --key rw --key-file
   [ "$status" -eq 0 ]
@@ -51,12 +51,12 @@ clone_test_repo() {
   in_pod "test -f ~/.ssh/id_ed25519"
 }
 
-@test "изоляция: deploy key не даёт доступа к другому репозиторию" {
+@test "isolation: the deploy key grants no access to another repository" {
   clone_test_repo
   CPOD_NO_ATTACH=1 run cpod up --key ro
   [ "$status" -eq 0 ]
   resolve_cname
-  # чужой приватный/произвольный репозиторий недоступен этим ключом
+  # an arbitrary/other repository is inaccessible with this key
   run in_pod "GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' git ls-remote git@github.com:github/no-such-cpod-repo.git"
   [ "$status" -ne 0 ]
 }

@@ -1,86 +1,94 @@
-# TECHNOLOGY — как устроен `claude-pod`
+# TECHNOLOGY — how `claude-pod` works
 
-Технология инкапсуляции: **процесс-контейнер (OCI) с bind-mount проекта + host-side брокер
-credentials**. Ниже — что именно инкапсулируется, какими механизмами и почему.
+Encapsulation technology: **an OCI process-container with a bind-mounted project + a
+host-side credential broker**. Below is what exactly is encapsulated, by which mechanisms,
+and why.
 
-## 1. Контейнер вместо OS-sandbox
+## 1. A container instead of an OS sandbox
 
-`claude-pod` запускает Claude Code внутри OCI-контейнера (podman/docker), а не в OS-песочнице
-(bubblewrap/seatbelt). Это даёт полноценное, воспроизводимое окружение (Ubuntu/CUDA + Node + uv +
-компиляторы), GPU-проброс и per-project изоляцию файловой системы и процессов. Цена — образ и
-оверхед контейнера (см. `PROS_CONS.md`).
+`claude-pod` runs Claude Code inside an OCI container (podman/docker) rather than an OS
+sandbox (bubblewrap/seatbelt). That gives a full, reproducible environment (Ubuntu/CUDA +
+Node + uv + compilers), GPU passthrough, and per-project isolation of the filesystem and
+processes. The cost is the image and container overhead (see `PROS_CONS.md`).
 
-- **Runtime-абстракция** (`lib/runtime.sh`): выбор `podman` (по умолчанию, rootless) или `docker`.
-  Все вызовы идут через `$RT`. Автовыбор: `--runtime` / `CLAUDE_POD_RUNTIME` → podman → docker.
-- **Непривилегированный пользователь**: образ собирается **под конкретный хост** — внутри создаётся
-  пользователь с тем же `uid:gid` и `HOME`, что и на хосте (`--build-arg HOST_UID/GID/USER/HOME`).
-  Для podman rootless дополнительно `--userns=keep-id`, чтобы владелец bind-mount совпал.
+- **Runtime abstraction** (`lib/runtime.sh`): picks `podman` (default, rootless) or `docker`.
+  All calls go through `$RT`. Selection: `--runtime` / `CLAUDE_POD_RUNTIME` → podman → docker.
+- **Non-root user**: the image is built **for the specific host** — it creates a user with
+  the same `uid:gid` and `HOME` as the host (`--build-arg HOST_UID/GID/USER/HOME`). For podman
+  rootless it also adds `--userns=keep-id` so bind-mount ownership lines up.
 
-## 2. Совпадение путей и общий `~/.claude`
+## 2. Path matching and a shared `~/.claude`
 
-Claude Code хранит сессии/историю в `~/.claude/projects/<slug>`, где `<slug>` — абсолютный путь
-проекта с заменой `/` на `-`. Чтобы **сессии продолжались бесшовно** и на хосте, и в контейнере:
+Claude Code stores sessions/history under `~/.claude/projects/<slug>`, where `<slug>` is the
+project's absolute path with `/` replaced by `-`. So that **sessions continue seamlessly** on
+both host and container:
 
-- проект монтируется по **идентичному абсолютному пути** (`-v $PWD:$PWD`, `-w $PWD`);
-- `HOME` в контейнере совпадает с хостовым, а `~/.claude` пробрасывается bind-mount’ом;
-- `~/.claude` монтируется **rw** (config/history/projects живут вместе с хостом), а файл токена
-  `~/.claude/.credentials.json` — **поверх, read-only** (гибрид: настройки пишутся, токен не
-  портится). См. `lib/mounts.sh`.
+- the project is mounted at the **identical absolute path** (`-v $PWD:$PWD`, `-w $PWD`);
+- the container `HOME` equals the host one, and `~/.claude` is bind-mounted in;
+- `~/.claude` is mounted **rw** (config/history/projects live together with the host), while
+  the token file `~/.claude/.credentials.json` is mounted **read-only** on top (hybrid: config
+  is writable, the token can't be corrupted). See `lib/mounts.sh`.
 
-Личные секреты хоста **не** пробрасываются: `~/.ssh`, `~/.config/gh`, `~/.git-credentials`,
-`~/.netrc`, `GH_TOKEN`/`GITHUB_TOKEN`/`*_API_KEY` (денилист при `--inherit-env`).
+Host secrets are **not** forwarded: `~/.ssh`, `~/.config/gh`, `~/.git-credentials`, `~/.netrc`,
+`GH_TOKEN`/`GITHUB_TOKEN`/`*_API_KEY` (denylist under `--inherit-env`).
 
-## 3. Git-изоляция через per-repo deploy key (host-side брокер)
+## 3. Git isolation via a per-repo deploy key (host-side broker)
 
-Ключевая идея: **токен основного аккаунта остаётся на хосте**, а контейнер получает узкий,
-одноразовый доступ ровно к одному репозиторию.
+Core idea: **the main account's token stays on the host**, and the container gets narrow,
+one-shot access to exactly one repository.
 
-Поток (`lib/deploykey.sh`), выполняется на хосте при `cpod up`:
+Flow (`lib/deploykey.sh`), executed on the host at `cpod up`:
 
-1. Определяется `origin` текущего репо и парсится `owner/repo`. Если это не GitHub-репозиторий —
-   весь блок пропускается (git работает локально, remote недоступен).
-2. Генерируется **эфемерная** пара `ed25519` (во временном каталоге состояния, не в `~/.ssh`).
-3. Публичный ключ регистрируется как **deploy key** именно этого репо:
-   `gh api -X POST /repos/{owner}/{repo}/keys` (`read_only` по режиму `--key ro|rw`). GitHub
-   по своей природе ограничивает deploy key **одним репозиторием** — доступа к другим он не даёт.
-4. **Доставка ключа — ssh-agent forwarding (по умолчанию):** приватный ключ загружается в
-   эфемерный `ssh-agent` на хосте, а в контейнер пробрасывается **только его сокет**
-   (`SSH_AUTH_SOCK`). После загрузки ключ **стирается с диска** (`shred`) — он остаётся лишь в
-   памяти агента. Внутри контейнера `git` подписывает операции через агент, но **самого ключа там
-   нет** — красть из контейнера нечего. Фолбэк `--key-file` монтирует файл ключа ro (слабее).
-5. Внутри контейнера (`entrypoint.sh`) настраивается git: `url."git@github.com:".insteadOf
-   "https://github.com/"` (чтобы использовался ssh-ключ, **не трогая** `.git/config` проекта) и
-   `~/.ssh/config` с `StrictHostKeyChecking accept-new`.
-6. При `cpod down` ключ **отзывается** (`gh api -X DELETE …/keys/{id}`), ssh-agent гасится,
-   временные файлы удаляются.
+1. The current repo's `origin` is detected and parsed into `owner/repo`. If it is not a GitHub
+   repository, the whole block is skipped (git works locally, no remote).
+2. An **ephemeral** `ed25519` pair is generated (in a temporary state dir, never in `~/.ssh`).
+3. The public key is registered as a **deploy key** of that repo:
+   `gh api -X POST /repos/{owner}/{repo}/keys` (`read_only` per `--key ro|rw`). By its nature a
+   deploy key is limited to **one** repository — it grants no access to any other.
+4. **Key delivery — ssh-agent forwarding (default):** the private key is loaded into an
+   ephemeral `ssh-agent` on the host, and only its socket (`SSH_AUTH_SOCK`) is forwarded into
+   the container. After loading, the key is **shredded from disk** — it lives only in agent
+   memory. Inside the container `git` signs operations through the agent, but **the key itself
+   is not there** — there is nothing to steal from the container. The `--key-file` fallback
+   mounts the key file read-only (weaker).
+5. Inside the container (`entrypoint.sh`) git is configured: `url."git@github.com:${repo}".
+   insteadOf "https://github.com/${repo}"` — scoped to THIS repo so other github https
+   dependencies are not forced over ssh — and `~/.ssh/config` with
+   `StrictHostKeyChecking accept-new`.
+6. On `cpod down` the key is **revoked** (`gh api -X DELETE …/keys/{id}`), the ssh-agent is
+   stopped, and temporary files are removed.
 
-### Как работает ssh-agent (коротко)
-`ssh-agent` держит приватный ключ у себя в памяти и наружу его не отдаёт. Клиенты (git/ssh)
-обращаются к нему через unix-сокет (`SSH_AUTH_SOCK`) с запросом «подпиши challenge» — агент
-подписывает внутри себя и возвращает только подпись. Пробрасывая в контейнер лишь сокет, мы даём
-возможность *пользоваться* ключом, не давая *скопировать* его.
+### How ssh-agent works (short)
+`ssh-agent` keeps the private key in its own memory and never hands it out. Clients (git/ssh)
+talk to it over a unix socket (`SSH_AUTH_SOCK`) asking it to "sign this challenge" — the agent
+signs internally and returns only the signature. By forwarding only the socket into the
+container, we let it *use* the key without letting it *copy* the key.
 
-## 4. Прокси, окружение, сеть (`lib/mounts.sh`)
-- Прокси-переменные пробрасываются автоматически; `localhost/127.0.0.1` в них переписывается на
-  host-gateway (`host.docker.internal` / `host.containers.internal`).
-- `--inherit-env` — все host-переменные, кроме денилиста секретов; `--env KEY[=VAL]` — точечно.
-- `--net-host` — сеть хоста: `localhost` внутри == хостовый, переписывание не нужно (удобно для
-  проксирования, но ослабляет изоляцию).
+## 4. Proxy, environment, networking (`lib/mounts.sh`)
+- Proxy variables are forwarded automatically; `localhost/127.0.0.1` in them is rewritten to
+  the host gateway (`host.docker.internal` / `host.containers.internal`).
+- `--inherit-env` forwards all host variables except the secret denylist; `--env KEY[=VAL]`
+  forwards one.
+- **`-p/--port`** publishes specific ports docker-style (`8080:80`, `127.0.0.1:5432:5432/tcp`),
+  repeatable — the container stays on its own network and only the listed ports are reachable.
+- `--net-host` uses the host network: `localhost` inside == the host's (handy for proxying),
+  no rewrite needed, but it weakens isolation and ignores `-p`.
 
-## 5. GPU и Docker-in-Docker
-- **GPU** (`lib/gpu.sh`): автодетект `nvidia-smi`; при наличии — `--gpus all` (docker) или
-  CDI-устройство (podman). Нет GPU → предупреждение и CPU-режим. `--gpu/--no-gpu` — вручную.
-- **DinD** (`lib/dind.sh`): по умолчанию выкл. Если в проекте найден docker (Dockerfile/compose) —
-  сокет пробрасывается автоматически с предупреждением (это ~ root на хосте). `--docker/--no-docker`.
+## 5. GPU and Docker-in-Docker
+- **GPU** (`lib/gpu.sh`): autodetects `nvidia-smi`; if present, adds `--gpus all` (docker) or a
+  CDI device (podman). No GPU → a warning and CPU mode. `--gpu/--no-gpu` override.
+- **DinD** (`lib/dind.sh`): off by default. If docker is found in the project (Dockerfile/
+  compose), the socket is passed through automatically with a warning (this is ~ root on the
+  host). `--docker/--no-docker` override.
 
-## 6. Жизненный цикл контейнера (`lib/container.sh`)
-Главный процесс контейнера — `sleep infinity` (после one-time setup в `entrypoint.sh`).
-Поэтому `up`/`start`/`attach` единообразно входят через `exec`, а контейнер переживает выход из
-shell — это и даёт три независимых сценария:
+## 6. Container lifecycle (`lib/container.sh`)
+The container's main process is `sleep infinity` (after one-time setup in `entrypoint.sh`).
+Therefore `up`/`start`/`attach` all enter uniformly via `exec`, and the container survives an
+exited shell — which is exactly what gives the three independent scenarios:
 
-- `up` → `run -d` (создать+запустить) + `exec` (войти);
-- `start` → `start` остановленного + `exec`;
-- `attach` → `exec` в работающий (сколько угодно параллельных сессий).
+- `up` → `run -d` (create+start) + `exec` (enter);
+- `start` → `start` a stopped one + `exec`;
+- `attach` → `exec` into a running one (any number of parallel sessions).
 
-Идентификация: имя `cpod-<basename>-<hash(abspath)>` и labels `cpod.managed/project/repo/keyid/
-runtime`. `cpod ls` фильтрует по label — по текущему пути или (`--all`) по всем.
+Identity: name `cpod-<basename>-<hash(abspath)>` and labels `cpod.managed/project/repo/keyid/
+runtime`. `cpod ls` filters by label — by the current path or (`--all`) across all.

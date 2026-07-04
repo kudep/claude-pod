@@ -1,52 +1,57 @@
-# PROS & CONS — плюсы, минусы, сравнение с альтернативами
+# PROS & CONS — pros, cons, comparison with alternatives
 
-## Плюсы подхода `claude-pod`
+## Pros of the `claude-pod` approach
 
-- **Узкий blast-radius для GitHub.** Токен основного аккаунта не попадает в контейнер; вместо него
-  — deploy key, ограниченный **одним** репозиторием, с отзывом на `down`. Скомпрометированный
-  контейнер не дотянется до других репозиториев.
-- **Ключ не на диске контейнера.** ssh-agent forwarding: приватный ключ живёт в памяти агента на
-  хосте, в контейнер идёт только сокет.
-- **Бесшовные сессии Claude.** Проект монтируется по идентичному пути → `~/.claude/projects/<slug>`
-  совпадает, история/сессии продолжаются и на хосте, и в контейнере.
-- **Настоящее окружение.** Ubuntu/CUDA + Node + uv + компиляторы, GPU-проброс, DinD при
-  необходимости — то, чего OS-песочница не даёт.
-- **Dual-runtime.** podman (rootless, по умолчанию) и docker; выбор пользователя.
-- **Непривилегированный пользователь** с корректным владением файлов (uid/gid хоста).
-- **Три явных сценария** (up/start/attach) + список по проекту; установка одной строкой.
-- **Claude не автостартует** — по умолчанию shell, полный контроль.
+- **Narrow GitHub blast radius.** The main account's token never enters the container; instead
+  there is a deploy key limited to **one** repository, revoked on `down`. A compromised
+  container cannot reach other repositories.
+- **The key is not on the container disk.** ssh-agent forwarding: the private key lives in the
+  host agent's memory, only the socket goes into the container.
+- **Seamless Claude sessions.** The project is mounted at an identical path → `~/.claude/
+  projects/<slug>` matches, history/sessions continue on both host and container.
+- **A real environment.** Ubuntu/CUDA + Node + uv + compilers, GPU passthrough, DinD when
+  needed — what an OS sandbox does not provide.
+- **Dual runtime.** podman (rootless, default) and docker; the user chooses.
+- **Non-root user** with correct file ownership (host uid/gid).
+- **Three explicit scenarios** (up/start/attach) + per-project listing; one-line install; shell
+  completions for bash/zsh/fish.
+- **Claude does not auto-start** — a shell by default, full control.
 
-## Минусы и ограничения
+## Cons and limitations
 
-- **Оверхед образа.** CUDA-база тяжёлая (~ГБ), первая сборка долгая (Node/uv/claude тянутся из
-  сети). Можно взять лёгкую базу: `CPOD_BASE_IMAGE=ubuntu:24.04`.
-- **Слабее, чем OS-sandbox по egress.** Мы не включаем default-deny firewall (по решению).
-  Токен `~/.claude` внутри **читаем** (ro лишь запрещает запись) → без сетевого фильтра
-  теоретически возможна утечка. См. `SECURITY.md`.
-- **DinD и `--net-host` ослабляют изоляцию** — включать осознанно.
-- **Требует `gh` с правом записи** к репо для регистрации deploy key (иначе тихо работает локально).
-- **Сборка образа под конкретный uid/gid хоста** — образ не переносится на хост с другим uid без
-  пересборки.
-- **Podman-нюансы**: `--userns=keep-id`, проброс сокетов и GPU (CDI) могут отличаться от docker.
+- **Image overhead.** The CUDA base is heavy (~GB), the first build is slow (Node/uv/claude are
+  pulled from the network). A light base is available: `CPOD_BASE_IMAGE=ubuntu:24.04`.
+- **Weaker than an OS sandbox on egress.** We do not enable a default-deny firewall (by choice).
+  The `~/.claude` token is **readable** inside (ro only blocks writes), so without a network
+  filter exfiltration is theoretically possible. See `SECURITY.md`.
+- **DinD and `--net-host` weaken isolation** — enable deliberately.
+- **Requires `gh` with write access** to the repo to register the deploy key (otherwise it
+  silently works locally).
+- **The image is built for a specific host uid/gid** — it does not port to a host with a
+  different uid without a rebuild.
+- **Podman specifics**: `--userns=keep-id`, socket and GPU (CDI) passthrough may differ from
+  docker.
 
-## Сравнение с альтернативами
+## Comparison with alternatives
 
-| Решение | Изоляция ФС | GitHub-доступ | GPU/окружение | Сессии `~/.claude` | Примечание |
+| Solution | FS isolation | GitHub access | GPU/environment | `~/.claude` sessions | Note |
 |---|---|---|---|---|---|
-| **claude-pod** | контейнер, per-project | **per-repo deploy key, авто+revoke** | CUDA/uv, GPU | **бесшовные (path-match)** | dual podman/docker |
-| Официальный native-sandbox (`sandbox-runtime`, bubblewrap/seatbelt) | OS-level, cwd | через host-proxy со scoped creds | нет отдельного окружения | н/п | нет контейнера, очень лёгкий |
-| Официальный devcontainer (+`init-firewall.sh`) | контейнер | **рекомендует** repo-scoped токены (без автоматизации) | свой Dockerfile | volume/`${devcontainerId}` | есть egress-firewall |
-| Community-обёртки (`claudebox`, `Z7Lab`, …) | контейнер | обычно креды хоста/skip-perms | профили | volume | без per-repo ключей |
-| Dagger `container-use` | контейнер + git-worktree | обычный git | свой образ | н/п | под параллельных агентов |
+| **claude-pod** | container, per-project | **per-repo deploy key, auto + revoke** | CUDA/uv, GPU | **seamless (path-match)** | dual podman/docker |
+| Official native sandbox (`sandbox-runtime`, bubblewrap/seatbelt) | OS-level, cwd | via a host proxy with scoped creds | no separate environment | n/a | no container, very light |
+| Official devcontainer (+`init-firewall.sh`) | container | **recommends** repo-scoped tokens (no automation) | your Dockerfile | volume/`${devcontainerId}` | has an egress firewall |
+| Community wrappers (`claudebox`, `Z7Lab`, …) | container | usually host creds/skip-perms | profiles | volume | no per-repo keys |
+| Dagger `container-use` | container + git worktree | ordinary git | your image | n/a | for parallel agents |
 
-### Когда что выбирать
-- Нужен **лёгкий** барьер для Bash без контейнера и с egress-allowlist → официальный **native-sandbox**.
-- Нужна **командная воспроизводимость** в IDE и egress-firewall → официальный **devcontainer**.
-- Нужны **параллельные агенты** на одном репо с worktree-ветками → **container-use**.
-- Нужны **полное окружение (GPU/uv), узкий per-repo доступ к GitHub из коробки и бесшовные сессии
-  Claude на нескольких путях** → **claude-pod**.
+### When to choose what
+- Need a **light** barrier for Bash without a container and with an egress allowlist → the
+  official **native sandbox**.
+- Need **team reproducibility** in an IDE and an egress firewall → the official **devcontainer**.
+- Need **parallel agents** on one repo with worktree branches → **container-use**.
+- Need a **full environment (GPU/uv), a narrow per-repo GitHub access out of the box, and
+  seamless Claude sessions across several paths** → **claude-pod**.
 
-## Возможные улучшения (roadmap)
-- Опциональный default-deny egress-allowlist (`--firewall`) — закрыть остаточный риск утечки токена.
-- MCP-gateway-паттерн (токен в отдельном контейнере) вместо/вместе с deploy key.
-- Кеш слоёв/преднастроенный образ, чтобы убрать долгую первую сборку.
+## Possible improvements (roadmap)
+- Optional default-deny egress allowlist (`--firewall`) — closes the residual token-exfiltration
+  risk.
+- MCP-gateway pattern (token in a separate container) instead of / together with the deploy key.
+- Layer cache / a prebuilt image to remove the slow first build.

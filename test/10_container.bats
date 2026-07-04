@@ -9,13 +9,13 @@ setup() {
 }
 teardown() { cpod_cleanup; }
 
-@test "up создаёт работающий контейнер; проект по идентичному пути; non-root uid хоста" {
+@test "up creates a running container; project at the identical path; non-root host uid" {
   make_project git
   CPOD_NO_ATTACH=1 run cpod up --key none
   [ "$status" -eq 0 ]
   resolve_cname
   [ "$("$RT" container inspect -f '{{.State.Running}}' "$CPOD_CNAME")" = "true" ]
-  # project mounted at same absolute path
+  # project mounted at the same absolute path
   in_pod "test -f '$PROJECT/README.md'"
   # workdir / path match
   [ "$(in_pod 'pwd')" = "$PROJECT" ]
@@ -24,7 +24,7 @@ teardown() { cpod_cleanup; }
   [ "$(in_pod 'id -u')" != "0" ]
 }
 
-@test "главный процесс — sleep; claude НЕ запущен автоматически" {
+@test "main process is sleep; claude is NOT auto-started" {
   make_project
   CPOD_NO_ATTACH=1 run cpod up --key none
   [ "$status" -eq 0 ]
@@ -35,9 +35,9 @@ teardown() { cpod_cleanup; }
   [ "$status" -ne 0 ]
 }
 
-@test ".claude гибрид: .credentials.json read-only" {
-  # нужен реальный ~/.claude/.credentials.json на хосте
-  [ -f "$HOME/.claude/.credentials.json" ] || skip "нет ~/.claude/.credentials.json"
+@test ".claude hybrid: .credentials.json is read-only" {
+  # needs a real ~/.claude/.credentials.json on the host
+  [ -f "$HOME/.claude/.credentials.json" ] || skip "no ~/.claude/.credentials.json"
   make_project
   CPOD_NO_ATTACH=1 run cpod up --key none
   [ "$status" -eq 0 ]
@@ -46,7 +46,7 @@ teardown() { cpod_cleanup; }
   [ "$status" -ne 0 ]
 }
 
-@test "start после stop переиспользует тот же контейнер" {
+@test "start after stop reuses the same container" {
   make_project
   CPOD_NO_ATTACH=1 cpod up --key none
   resolve_cname
@@ -56,17 +56,17 @@ teardown() { cpod_cleanup; }
   [ "$("$RT" container inspect -f '{{.State.Running}}' "$CPOD_CNAME")" = "true" ]
 }
 
-@test "attach = вторая сессия в работающем контейнере" {
+@test "attach = a second session in a running container" {
   make_project
   CPOD_NO_ATTACH=1 cpod up --key none
   resolve_cname
-  # эмулируем attach неинтерактивно
+  # emulate attach non-interactively
   run "$RT" exec "$CPOD_CNAME" bash -lc 'echo second-session'
   [ "$status" -eq 0 ]
   [[ "$output" == *"second-session"* ]]
 }
 
-@test "ls показывает managed-контейнер этого проекта" {
+@test "ls shows the managed container of this project" {
   make_project
   CPOD_NO_ATTACH=1 cpod up --key none
   resolve_cname
@@ -75,7 +75,7 @@ teardown() { cpod_cleanup; }
   [[ "$output" == *"$CPOD_CNAME"* ]]
 }
 
-@test "down удаляет контейнер и чистит состояние" {
+@test "down removes the container and cleans up state" {
   make_project
   CPOD_NO_ATTACH=1 cpod up --key none
   resolve_cname
@@ -85,14 +85,14 @@ teardown() { cpod_cleanup; }
   [ ! -d "$CLAUDE_POD_STATE/containers/$CPOD_CNAME" ]
 }
 
-@test "не-репозиторий: up работает без deploy key" {
-  make_project           # без git
+@test "non-repository: up works without a deploy key" {
+  make_project           # no git
   CPOD_NO_ATTACH=1 run cpod up
   [ "$status" -eq 0 ]
-  [[ "$output" == *"не репозиторий"* ]] || [[ "$output" == *"без deploy key"* ]]
+  [[ "$output" == *"not a repository"* ]] || [[ "$output" == *"no deploy key"* ]]
 }
 
-@test "toolchain в образе: node, uv, git, rg" {
+@test "image toolchain: node, uv, git, rg" {
   make_project
   CPOD_NO_ATTACH=1 cpod up --key none
   resolve_cname

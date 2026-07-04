@@ -4,7 +4,7 @@ load helpers
 
 setup() { cpod_isolate_state; }
 
-@test "help выводит команды и режимы ключа" {
+@test "help lists commands and key modes" {
   run cpod -h
   [ "$status" -eq 0 ]
   [[ "$output" == *"up"* ]]
@@ -12,28 +12,29 @@ setup() { cpod_isolate_state; }
   [[ "$output" == *"--key rw"* ]]
   [[ "$output" == *"--key ro"* ]]
   [[ "$output" == *"--key none"* ]]
+  [[ "$output" == *"--port"* ]]
 }
 
-@test "неизвестный флаг -> ошибка + help + код 2" {
+@test "unknown flag -> error + help + exit 2" {
   run cpod --nope
   [ "$status" -eq 2 ]
-  [[ "$output" == *"неизвестный флаг"* ]]
-  [[ "$output" == *"Команды:"* ]]
+  [[ "$output" == *"unknown flag"* ]]
+  [[ "$output" == *"Commands:"* ]]
 }
 
-@test "недопустимый --key отвергается с подсказкой" {
+@test "invalid --key is rejected with a hint" {
   run cpod up --key bogus
   [ "$status" -eq 2 ]
-  [[ "$output" == *"--key должен быть rw|ro|none"* ]]
+  [[ "$output" == *"--key must be rw|ro|none"* ]]
 }
 
-@test "две команды сразу -> ошибка" {
+@test "two commands at once -> error" {
   run cpod up down
   [ "$status" -eq 2 ]
-  [[ "$output" == *"лишняя команда"* ]]
+  [[ "$output" == *"unexpected extra command"* ]]
 }
 
-@test "ls на пустом состоянии не падает" {
+@test "ls on empty state does not fail" {
   skip_if_no_runtime
   make_project
   run cpod ls

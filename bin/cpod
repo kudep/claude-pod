@@ -21,6 +21,7 @@ CPOD_INHERIT_ENV=0
 CPOD_EXTRA_ENV=()
 CPOD_CLAUDE_HARDENED=0
 CPOD_NET_HOST=0
+CPOD_PORTS=()
 CPOD_GPU="auto"           # auto | on | off
 CPOD_DIND="auto"          # auto | on | off
 CPOD_DIND_EXPLICIT=0
@@ -38,41 +39,42 @@ PROJECT_DIR="$(pwd -P)"
 
 usage() {
   cat >&2 <<EOF
-${_C_BLU}cpod${_C_RST} — Claude Code в изолированном контейнере под текущий репозиторий (repo: claude-pod)
+${_C_BLU}cpod${_C_RST} — Claude Code in an isolated container tied to the current repo (repo: claude-pod)
 
-${_C_GRN}Команды:${_C_RST}
-  up            создать и запустить новый контейнер, войти в shell        (сценарий 1)
-  start         запустить ранее созданный (остановленный) контейнер       (сценарий 2)
-  attach|shell  подключиться к уже работающему контейнеру (новая сессия)  (сценарий 3)
-  stop          остановить контейнер (не удаляя)
-  down          остановить, удалить контейнер и ОТОЗВАТЬ deploy key
-  ls|list       список контейнеров для этого проекта (или --all для всех)
-  status        состояние контейнера текущего проекта
-  build         собрать образ (без запуска; --rebuild — пересобрать)
-  (без команды) умный режим: нет → up, остановлен → start, работает → attach
+${_C_GRN}Commands:${_C_RST}
+  up            create and start a new container, enter a shell        (scenario 1)
+  start         start a previously created (stopped) container         (scenario 2)
+  attach|shell  connect to an already running container (new session)  (scenario 3)
+  stop          stop the container (without removing it)
+  down          stop, remove the container and REVOKE the deploy key
+  ls|list       list containers for this project (or --all for every one)
+  status        status of this project's container
+  build         build the image (without starting; --rebuild to rebuild)
+  (no command)  smart mode: none -> up, stopped -> start, running -> attach
 
-${_C_GRN}Ключ (git-доступ к GitHub), режимы:${_C_RST}
-  --key rw      (по умолчанию) отдельный deploy key с ПРАВОМ PUSH только в этот репо
-  --key ro      deploy key только на чтение — push запрещён
-  --key none    без ключа: работа только с локальной копией
-  --key-file    доставить ключ файлом (ro) вместо ssh-agent (по умолчанию — ssh-agent)
+${_C_GRN}Key (git access to GitHub), modes:${_C_RST}
+  --key rw      (default) dedicated deploy key with PUSH rights to THIS repo only
+  --key ro      read-only deploy key — push is rejected
+  --key none    no key: work on the local copy only
+  --key-file    deliver the key as a file (ro) instead of ssh-agent (default: ssh-agent)
 
-${_C_GRN}Прочие флаги:${_C_RST}
-  --claude              сразу запустить claude при входе (иначе — shell)
-  --run "<cmd>"         выполнить команду при входе вместо shell
-  --claude-hardened     смонтировать исполняемую конфигурацию ~/.claude (settings*/plugins/
-                        agents/skills/commands/hooks) read-only — защита хоста от подсадки hook
-  --inherit-env         пробросить все переменные среды хоста (кроме секретов)
-  --env KEY[=VAL]       пробросить одну переменную (можно повторять)
-  --net-host            сеть хоста (удобно для прокси; ослабляет изоляцию)
-  --gpu | --no-gpu      принудительно вкл/выкл GPU (по умолчанию — автодетект)
-  --docker | --no-docker  вкл/выкл проброс docker-сокета (по умолчанию — авто по проекту)
-  --runtime podman|docker  выбрать runtime (по умолчанию: podman, иначе docker)
-  --rebuild             пересобрать образ
-  --all                 (для ls) показать контейнеры всех проектов
-  -h | --help           эта справка
+${_C_GRN}Other flags:${_C_RST}
+  --claude              run claude immediately on entry (otherwise a shell)
+  --run "<cmd>"         run a command on entry instead of a shell
+  --claude-hardened     mount executable ~/.claude config (settings*/plugins/agents/
+                        skills/commands/hooks) read-only — protects the host from a planted hook
+  --inherit-env         forward all host environment variables (except secrets)
+  --env KEY[=VAL]       forward a single variable (repeatable)
+  -p, --port SPEC       publish a port (docker-style, e.g. 8080:80, 127.0.0.1:8080:80/tcp); repeatable
+  --net-host            host network (handy for proxies; weakens isolation; ignores -p)
+  --gpu | --no-gpu      force GPU on/off (default: autodetect)
+  --docker | --no-docker  enable/disable docker socket passthrough (default: auto per project)
+  --runtime podman|docker  pick the runtime (default: podman, else docker)
+  --rebuild             rebuild the image
+  --all                 (for ls) show containers of all projects
+  -h | --help           this help
 
-Подробности и модель безопасности: ${CPOD_HOME}/docs/
+Details and security model: ${CPOD_HOME}/docs/
 EOF
 }
 
@@ -81,7 +83,7 @@ CMD=""
 while [ $# -gt 0 ]; do
   case "$1" in
     up|start|attach|shell|ls|list|down|stop|status|build)
-      [ -z "$CMD" ] || { log_error "лишняя команда: $1"; usage; exit 2; }
+      [ -z "$CMD" ] || { log_error "unexpected extra command: $1"; usage; exit 2; }
       CMD="$1"; shift ;;
     help|-h|--help) CMD="help"; shift ;;
     --runtime)      CPOD_RUNTIME="${2:-}"; shift 2 ;;
@@ -96,6 +98,8 @@ while [ $# -gt 0 ]; do
     --claude-hardened) CPOD_CLAUDE_HARDENED=1; shift ;;
     --env)          CPOD_EXTRA_ENV+=("${2:-}"); shift 2 ;;
     --env=*)        CPOD_EXTRA_ENV+=("${1#*=}"); shift ;;
+    -p|--port)      CPOD_PORTS+=("${2:-}"); shift 2 ;;
+    -p=*|--port=*)  CPOD_PORTS+=("${1#*=}"); shift ;;
     --net-host|--network-host) CPOD_NET_HOST=1; shift ;;
     --gpu)          CPOD_GPU=on; shift ;;
     --no-gpu)       CPOD_GPU=off; shift ;;
@@ -104,14 +108,14 @@ while [ $# -gt 0 ]; do
     --all|-a)       CPOD_ALL=1; shift ;;
     --rebuild)      CPOD_REBUILD=1; shift ;;
     --)             shift; break ;;
-    -*)             log_error "неизвестный флаг: $1"; usage; exit 2 ;;
-    *)              log_error "неизвестный аргумент: $1"; usage; exit 2 ;;
+    -*)             log_error "unknown flag: $1"; usage; exit 2 ;;
+    *)              log_error "unknown argument: $1"; usage; exit 2 ;;
   esac
 done
 
 if [ "$CMD" = "help" ]; then usage; exit 0; fi
 
-case "$CPOD_KEY_MODE" in rw|ro|none) ;; *) log_error "--key должен быть rw|ro|none (дано: '$CPOD_KEY_MODE')"; usage; exit 2 ;; esac
+case "$CPOD_KEY_MODE" in rw|ro|none) ;; *) log_error "--key must be rw|ro|none (got: '$CPOD_KEY_MODE')"; usage; exit 2 ;; esac
 
 rt_detect
 mkdir -p "${CPOD_STATE}/containers"

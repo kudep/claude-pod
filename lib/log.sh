@@ -8,18 +8,18 @@ else
   _C_RED=""; _C_YEL=""; _C_GRN=""; _C_BLU=""; _C_DIM=""; _C_RST=""
 fi
 
-log_info()  { printf '%s[cpod]%s %s\n'      "$_C_BLU" "$_C_RST" "$*" >&2; }
-log_ok()    { printf '%s[cpod]%s %s\n'      "$_C_GRN" "$_C_RST" "$*" >&2; }
+log_info()  { printf '%s[cpod]%s %s\n'       "$_C_BLU" "$_C_RST" "$*" >&2; }
+log_ok()    { printf '%s[cpod]%s %s\n'       "$_C_GRN" "$_C_RST" "$*" >&2; }
 log_warn()  { printf '%s[cpod] warn:%s %s\n' "$_C_YEL" "$_C_RST" "$*" >&2; }
 log_error() { printf '%s[cpod] error:%s %s\n' "$_C_RED" "$_C_RST" "$*" >&2; }
-log_step()  { printf '%s  ->%s %s\n'         "$_C_DIM" "$_C_RST" "$*" >&2; }
+log_step()  { printf '%s  ->%s %s\n'          "$_C_DIM" "$_C_RST" "$*" >&2; }
 
-# log_die MSG [CODE] — print error and exit
+# log_die MSG — print an error and exit
 log_die() { log_error "$*"; exit "${_die_code:-1}"; }
 
 # require CMD [HINT] — ensure a command exists on the host
 require() {
   command -v "$1" >/dev/null 2>&1 && return 0
-  log_error "требуется '$1', но он не найден в PATH${2:+ ($2)}"
+  log_error "'$1' is required but was not found in PATH${2:+ ($2)}"
   return 1
 }
