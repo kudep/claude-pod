@@ -13,6 +13,12 @@ _cpod() {
     '*--env[forward one environment variable]:KEY=VAL:' \
     '*-p[publish a port (docker-style)]:port spec:' \
     '*--port[publish a port (docker-style)]:port spec:' \
+    '*-v[extra bind mount or named volume]:volume spec:' \
+    '*--volume[extra bind mount or named volume]:volume spec:' \
+    '--cache-volume[persistent per-project ~/.cache volume]' \
+    '--rm[remove the container when the session ends]' \
+    '--volumes[(down) also remove the cache volume]' \
+    '(-f --follow)'{-f,--follow}'[(logs) stream the logs]' \
     '--net-host[use the host network]' \
     '--gpu[force GPU on]' \
     '--no-gpu[force GPU off]' \
@@ -22,7 +28,7 @@ _cpod() {
     '--rebuild[rebuild the image]' \
     '--all[list containers of all projects]' \
     '(-h --help)'{-h,--help}'[show help]' \
-    '1:command:(up start attach shell stop down ls list status build help)'
+    '1:command:(up start attach shell restart exec logs inspect stop down prune ls list status build help)'
 }
 
 _cpod "$@"

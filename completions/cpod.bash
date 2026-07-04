@@ -5,15 +5,16 @@ _cpod() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-  local cmds="up start attach shell stop down ls list status build help"
+  local cmds="up start attach shell restart exec logs inspect stop down prune ls list status build help"
   local flags="--key --key-file --claude --run --claude-hardened --inherit-env --env \
-               -p --port --net-host --gpu --no-gpu --docker --no-docker --runtime \
+               -p --port -v --volume --cache-volume --rm --volumes -f --follow \
+               --net-host --gpu --no-gpu --docker --no-docker --runtime \
                --rebuild --all --help -h"
 
   case "$prev" in
     --key)     COMPREPLY=( $(compgen -W "rw ro none" -- "$cur") ); return ;;
     --runtime) COMPREPLY=( $(compgen -W "podman docker" -- "$cur") ); return ;;
-    --run|--env|-p|--port) return ;;   # free-form value
+    --run|--env|-p|--port|-v|--volume) return ;;   # free-form value
   esac
 
   if [[ "$cur" == -* ]]; then
@@ -26,7 +27,7 @@ _cpod() {
   local i
   for (( i=1; i < COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
-      up|start|attach|shell|stop|down|ls|list|status|build|help) seen_cmd=1; break ;;
+      up|start|attach|shell|restart|exec|logs|inspect|stop|down|prune|ls|list|status|build|help) seen_cmd=1; break ;;
     esac
   done
   if [ -z "$seen_cmd" ]; then

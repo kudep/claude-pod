@@ -15,6 +15,24 @@ setup() { cpod_isolate_state; }
   [[ "$output" == *"--port"* ]]
 }
 
+@test "help lists management commands and volume flags" {
+  run cpod -h
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"exec"* ]]
+  [[ "$output" == *"prune"* ]]
+  [[ "$output" == *"restart"* ]]
+  [[ "$output" == *"-v, --volume"* ]]
+  [[ "$output" == *"--cache-volume"* ]]
+}
+
+@test "exec with no container -> error, not a crash" {
+  skip_if_no_runtime
+  make_project
+  run cpod exec echo hi
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no container"* ]]
+}
+
 @test "unknown flag -> error + help + exit 2" {
   run cpod --nope
   [ "$status" -eq 2 ]

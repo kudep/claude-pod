@@ -14,6 +14,7 @@ container_name() {
   hash="$(printf '%s' "$PROJECT_DIR" | sha256sum | cut -c1-10)"
   CNAME="cpod-${base}-${hash}"
   CSTATE="${CPOD_STATE}/containers/${CNAME}"
+  CACHE_VOL="cpod-cache-${hash}"   # per-project named volume for --cache-volume
 }
 
 container_exists()  { rt container inspect "$CNAME" >/dev/null 2>&1; }
@@ -82,6 +83,7 @@ cmd_up() {
   mounts_add_claude
   mounts_add_net
   mounts_add_ports
+  mounts_add_volumes
   mounts_add_proxy
   mounts_add_env
   gpu_add
@@ -101,6 +103,12 @@ cmd_up() {
   [ "${CPOD_RUN_CLAUDE}" = "1" ] || [ -n "${CPOD_RUN_CMD}" ] || \
     log_info "entering shell (claude is not auto-started; run 'claude' manually)"
   login_exec
+  # --rm: ephemeral container — tear it down (and revoke its key) once the
+  # interactive session ends. Skipped in no-attach mode (nothing to wait on).
+  if [ "${CPOD_RM:-0}" = "1" ] && [ "${CPOD_NO_ATTACH:-0}" != "1" ]; then
+    log_info "--rm: removing the ephemeral container"
+    cmd_down
+  fi
 }
 
 cmd_start() {
@@ -136,6 +144,65 @@ cmd_down() {
     rt rm -f "$CNAME" >/dev/null 2>&1 && log_ok "container ${CNAME} removed"
   fi
   rm -rf "$CSTATE"
+  # Named volumes hold data, so they survive `down` unless --volumes is given.
+  if [ "${CPOD_DOWN_VOLUMES:-0}" = "1" ]; then
+    rt volume rm "$CACHE_VOL" >/dev/null 2>&1 && log_ok "cache volume ${CACHE_VOL} removed"
+  fi
+}
+
+cmd_restart() {
+  container_name
+  container_exists || log_die "no container for this project — use: cpod up"
+  rt restart "$CNAME" >/dev/null || log_die "failed to restart ${CNAME}"
+  log_ok "container ${CNAME} restarted"
+  login_exec
+}
+
+# One-off command in the running container (docker exec-style); argv is literal.
+cmd_exec() {
+  container_name
+  container_exists  || log_die "no container for this project — use: cpod up"
+  container_running || log_die "container is stopped — start it: cpod start"
+  [ "${#CPOD_PASSTHRU[@]}" -gt 0 ] || log_die "usage: cpod exec <command> [args...]"
+  local -a tty=() wa=()
+  [ -d "$PROJECT_DIR" ] && wa=( -w "$PROJECT_DIR" )
+  if [ -t 0 ] && [ -t 1 ]; then tty=( -it ); else tty=( -i ); fi
+  rt exec "${tty[@]}" "${wa[@]}" -e "TERM=${TERM:-xterm-256color}" "$CNAME" "${CPOD_PASSTHRU[@]}"
+}
+
+cmd_logs() {
+  container_name
+  container_exists || log_die "no container for this project"
+  local -a a=(); [ "${CPOD_LOGS_FOLLOW:-0}" = "1" ] && a=( -f )
+  rt logs "${a[@]}" "$CNAME"
+}
+
+cmd_inspect() {
+  container_name
+  container_exists || log_die "no container for this project"
+  rt container inspect "$CNAME"
+}
+
+# Remove STOPPED cpod containers (this project, or --all), revoking their deploy
+# keys and clearing state first — the safe bulk cleanup analog of `docker prune`.
+cmd_prune() {
+  local -a f=( --filter "label=cpod.managed=1" )
+  local scope="${PROJECT_DIR}"
+  if [ "${CPOD_ALL:-0}" = "1" ]; then scope="all projects"; else f+=( --filter "label=cpod.project=${PROJECT_DIR}" ); fi
+  local names n removed=0
+  names="$(rt ps -a "${f[@]}" --format '{{.Names}}' 2>/dev/null)" || true
+  if [ -z "$names" ]; then log_info "no cpod containers to prune (${scope})"; return 0; fi
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    if [ "$(rt container inspect -f '{{.State.Running}}' "$n" 2>/dev/null)" = "true" ]; then
+      continue   # prune leaves running containers alone
+    fi
+    dk_revoke "${CPOD_STATE}/containers/${n}"
+    if rt rm -f "$n" >/dev/null 2>&1; then
+      rm -rf "${CPOD_STATE}/containers/${n}"; removed=$((removed+1)); log_ok "pruned ${n}"
+    fi
+  done <<< "$names"
+  log_info "pruned ${removed} stopped container(s) (${scope})"
 }
 
 cmd_ls() {

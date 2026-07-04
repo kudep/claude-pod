@@ -22,6 +22,12 @@ CPOD_EXTRA_ENV=()
 CPOD_CLAUDE_HARDENED=0
 CPOD_NET_HOST=0
 CPOD_PORTS=()
+CPOD_VOLUMES=()           # extra -v/--volume bind mounts and named volumes
+CPOD_CACHE_VOL=0          # --cache-volume: per-project persistent ~/.cache
+CPOD_RM=0                 # --rm: tear the container down when the session ends
+CPOD_DOWN_VOLUMES=0       # down --volumes: also remove the cache volume
+CPOD_LOGS_FOLLOW=0        # logs -f/--follow
+CPOD_PASSTHRU=()          # everything after `exec` — the command to run
 CPOD_GPU="auto"           # auto | on | off
 CPOD_DIND="auto"          # auto | on | off
 CPOD_DIND_EXPLICIT=0
@@ -45,8 +51,15 @@ ${_C_GRN}Commands:${_C_RST}
   up            create and start a new container, enter a shell        (scenario 1)
   start         start a previously created (stopped) container         (scenario 2)
   attach|shell  connect to an already running container (new session)  (scenario 3)
+  restart       restart this project's container, then enter a shell
+  exec <cmd>    run a one-off command in the running container (no new container)
+  logs [-f]     show the container's logs (-f/--follow to stream)
+  inspect       low-level details of the container (runtime inspect)
   stop          stop the container (without removing it)
   down          stop, remove the container and REVOKE the deploy key
+                (add --volumes to also drop the cache volume)
+  prune         remove STOPPED cpod containers (this project, or --all),
+                revoking their deploy keys
   ls|list       list containers for this project (or --all for every one)
   status        status of this project's container
   build         build the image (without starting; --rebuild to rebuild)
@@ -66,6 +79,9 @@ ${_C_GRN}Other flags:${_C_RST}
   --inherit-env         forward all host environment variables (except secrets)
   --env KEY[=VAL]       forward a single variable (repeatable)
   -p, --port SPEC       publish a port (docker-style, e.g. 8080:80, 127.0.0.1:8080:80/tcp); repeatable
+  -v, --volume SPEC     extra bind mount or named volume (HOST:CONT[:opts] or NAME:CONT[:opts]); repeatable
+  --cache-volume        mount a persistent per-project named volume at ~/.cache (survives recreation)
+  --rm                  remove the container when the session ends (ephemeral)
   --net-host            host network (handy for proxies; weakens isolation; ignores -p)
   --gpu | --no-gpu      force GPU on/off (default: autodetect)
   --docker | --no-docker  enable/disable docker socket passthrough (default: auto per project)
@@ -82,9 +98,12 @@ EOF
 CMD=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    up|start|attach|shell|ls|list|down|stop|status|build)
+    up|start|attach|shell|ls|list|down|stop|status|build|restart|logs|inspect|prune)
       [ -z "$CMD" ] || { log_error "unexpected extra command: $1"; usage; exit 2; }
       CMD="$1"; shift ;;
+    exec)
+      [ -z "$CMD" ] || { log_error "unexpected extra command: $1"; usage; exit 2; }
+      CMD="exec"; shift; CPOD_PASSTHRU=( "$@" ); break ;;   # rest is the command, verbatim
     help|-h|--help) CMD="help"; shift ;;
     --runtime)      CPOD_RUNTIME="${2:-}"; shift 2 ;;
     --runtime=*)    CPOD_RUNTIME="${1#*=}"; shift ;;
@@ -100,6 +119,12 @@ while [ $# -gt 0 ]; do
     --env=*)        CPOD_EXTRA_ENV+=("${1#*=}"); shift ;;
     -p|--port)      CPOD_PORTS+=("${2:-}"); shift 2 ;;
     -p=*|--port=*)  CPOD_PORTS+=("${1#*=}"); shift ;;
+    -v|--volume)    CPOD_VOLUMES+=("${2:-}"); shift 2 ;;
+    -v=*|--volume=*) CPOD_VOLUMES+=("${1#*=}"); shift ;;
+    --cache-volume) CPOD_CACHE_VOL=1; shift ;;
+    --rm)           CPOD_RM=1; shift ;;
+    --volumes)      CPOD_DOWN_VOLUMES=1; shift ;;
+    -f|--follow)    CPOD_LOGS_FOLLOW=1; shift ;;
     --net-host|--network-host) CPOD_NET_HOST=1; shift ;;
     --gpu)          CPOD_GPU=on; shift ;;
     --no-gpu)       CPOD_GPU=off; shift ;;
@@ -125,8 +150,13 @@ case "${CMD:-default}" in
   up)            cmd_up ;;
   start)         cmd_start ;;
   attach|shell)  cmd_attach ;;
+  restart)       cmd_restart ;;
+  exec)          cmd_exec ;;
+  logs)          cmd_logs ;;
+  inspect)       cmd_inspect ;;
   stop)          cmd_stop ;;
   down)          cmd_down ;;
+  prune)         cmd_prune ;;
   ls|list)       cmd_ls ;;
   status)        cmd_status ;;
   build)         image_ensure ;;

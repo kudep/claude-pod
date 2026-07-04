@@ -42,9 +42,14 @@ Three lifecycle scenarios:
 | `cpod up`     | create a **new** container and enter it (scenario 1)            |
 | `cpod start`  | start a **previously created**, stopped container (scenario 2) |
 | `cpod attach` | connect to an **already running** container, new session (3)    |
+| `cpod restart`| restart this project's container, then enter it                 |
+| `cpod exec …` | run a one-off command in the running container (no new one)      |
+| `cpod logs`   | show the container's logs (`-f`/`--follow` to stream)           |
+| `cpod inspect`| low-level container details (runtime `inspect`)                 |
 | `cpod ls`     | list containers for this project (`--all` for every one)        |
 | `cpod stop`   | stop the container (without removing it)                        |
-| `cpod down`   | stop, remove the container and **revoke the deploy key**        |
+| `cpod down`   | stop, remove the container and **revoke the deploy key** (`--volumes` also drops the cache volume) |
+| `cpod prune`  | remove **stopped** cpod containers (this project, or `--all`), revoking their keys |
 
 With no argument, `cpod` picks the mode itself: no container → `up`, stopped → `start`,
 running → `attach`.
@@ -71,6 +76,10 @@ cpod up --inherit-env          # forward all host variables (except secrets)
 cpod up --env FOO=bar          # forward a single variable
 cpod up -p 8080:80             # publish a port (docker-style); repeatable
 cpod up -p 127.0.0.1:5432:5432/tcp
+cpod up -v ~/datasets:/data:ro # extra bind mount or named volume (docker-style); repeatable
+cpod up -v models:/models      # a named volume (auto-created)
+cpod up --cache-volume         # persistent per-project ~/.cache (survives recreation)
+cpod up --rm                   # remove the container when the session ends (ephemeral)
 cpod up --net-host             # host network (handy for proxies; weakens isolation; ignores -p)
 cpod up --gpu / --no-gpu       # force GPU on/off (default: autodetect)
 cpod up --docker / --no-docker # docker socket passthrough (default: auto per project)
@@ -83,6 +92,18 @@ Prefer `-p/--port` when you only want specific ports reachable — it keeps the 
 its own network and publishes just those ports (exactly like `docker run -p`). Use
 `--net-host` only when you want the container to share the host's whole network stack (e.g.
 to reach a `localhost` proxy directly); `-p` is ignored in that mode.
+
+### Volumes
+
+`-v/--volume` takes docker-style specs — a host path (`~/data:/data:ro`) or a **named
+volume** (`models:/models`, auto-created). Any `-v` weakens isolation, so mounting sensitive
+host paths (`/`, `/etc`, `~/.ssh`, a docker socket) prints a warning; use `--docker` for the
+daemon rather than bind-mounting its socket.
+
+`--cache-volume` mounts a persistent per-project named volume at `~/.cache`, so package
+caches (uv/pip/npm) survive `down` + recreate — a big speed-up when you rebuild pods often.
+Named volumes are kept by `down`; add `--volumes` to drop the cache volume too, or use
+`cpod prune` to bulk-remove stopped containers.
 
 ## Host requirements
 

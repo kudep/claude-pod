@@ -23,6 +23,9 @@ mounts_add_claude() {
   [ -d "$hc" ] || { log_warn "host has no ${hc} — container starts without shared Claude settings"; return 0; }
   RUN_ARGS+=( -v "${hc}:${cc}" )
   [ -f "${hc}/.credentials.json" ] && RUN_ARGS+=( -v "${hc}/.credentials.json:${cc}/.credentials.json:ro" )
+  # Claude Code keeps its main config (projects, onboarding, MCP) in ~/.claude.json,
+  # a FILE next to the dir — mount it too so the pod isn't seen as a fresh install.
+  [ -f "${HOST_HOME}/.claude.json" ] && RUN_ARGS+=( -v "${HOST_HOME}/.claude.json:${CONTAINER_HOME}/.claude.json" )
   if [ "${CPOD_CLAUDE_HARDENED:-0}" = "1" ]; then
     local p
     for p in settings.json settings.local.json plugins agents skills commands hooks; do
@@ -65,6 +68,33 @@ mounts_add_env() {
   [ -n "${CPOD_GIT_NAME:-}" ]  && RUN_ARGS+=( -e "CPOD_GIT_NAME=${CPOD_GIT_NAME}" )
   [ -n "${CPOD_GIT_EMAIL:-}" ] && RUN_ARGS+=( -e "CPOD_GIT_EMAIL=${CPOD_GIT_EMAIL}" )
   return 0   # never let a trailing false test propagate under `set -e`
+}
+
+# Extra bind mounts and named volumes (docker-style -v/--volume), plus an optional
+# per-project cache volume. Passthrough SPECs (HOST:CONT[:opts] or NAME:CONT[:opts])
+# are forwarded verbatim; a couple of clearly dangerous sources get a warning since
+# any -v weakens the isolation this tool exists to provide.
+mounts_add_volumes() {
+  local v src
+  for v in "${CPOD_VOLUMES[@]:-}"; do
+    [ -n "$v" ] || continue
+    src="${v%%:*}"
+    case "$src" in
+      /|/etc|/etc/*|/root|/root/*|"${HOST_HOME}"|"${HOST_HOME}/.ssh"*)
+        log_warn "-v mounts sensitive host path '${src}' — this weakens isolation" ;;
+    esac
+    case "$v" in
+      */docker.sock*|*/podman.sock*)
+        log_warn "-v mounts a container socket (host control) — use --docker for the daemon instead" ;;
+    esac
+    RUN_ARGS+=( -v "$v" )
+    log_step "volume: ${v}"
+  done
+  if [ "${CPOD_CACHE_VOL:-0}" = "1" ]; then
+    RUN_ARGS+=( -v "${CACHE_VOL}:${CONTAINER_HOME}/.cache" )
+    log_step "cache volume ${CACHE_VOL} -> ${CONTAINER_HOME}/.cache (persists across recreation; remove with 'down --volumes')"
+  fi
+  return 0
 }
 
 # Networking: host network on request, otherwise host-gateway resolution for proxy.

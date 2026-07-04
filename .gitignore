@@ -1,5 +1,6 @@
-# Локальные настройки Claude Code (не для публикации)
+# Локальные настройки Claude Code (не для публикации), включая временные файлы
 .claude/settings.local.json
+.claude/settings.local.json.tmp.*
 
 # Прочее локальное окружение
 *.log
