@@ -33,6 +33,16 @@ if [ "${CPOD_HAS_KEY:-0}" = "1" ]; then
   chmod 600 "${HOME}/.ssh/config"
 fi
 
+# Claude Code records the host's install path in ~/.claude.json (e.g.
+# ~/.local/bin/claude for the native installer). Inside the pod claude is the image's
+# npm-global binary, so that path looks "missing/broken" and claude nags to repair.
+# Point the recorded native path at the real binary (container-local; the host tree is
+# not mounted). Combined with DISABLE_AUTOUPDATER=1 this keeps the pod's claude quiet.
+if command -v claude >/dev/null 2>&1; then
+  mkdir -p "${HOME}/.local/bin"
+  ln -sf "$(command -v claude)" "${HOME}/.local/bin/claude" 2>/dev/null || true
+fi
+
 # If given an explicit command, run it as PID-ish; otherwise idle.
 if [ "$#" -gt 0 ]; then
   exec "$@"

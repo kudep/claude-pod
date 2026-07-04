@@ -11,7 +11,8 @@ ARG HOST_HOME=/home/dev
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
-    NODE_MAJOR=20
+    NODE_MAJOR=20 \
+    DISABLE_AUTOUPDATER=1
 
 # --- base OS packages + toolchain --------------------------------------------
 RUN set -eux; \

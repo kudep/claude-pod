@@ -98,3 +98,14 @@ teardown() { cpod_cleanup; }
   resolve_cname
   in_pod "command -v node && command -v uv && command -v git && command -v rg"
 }
+
+@test "claude auto-update is disabled and its recorded install path resolves" {
+  make_project
+  CPOD_NO_ATTACH=1 cpod up --key none
+  resolve_cname
+  # image ships a pinned claude — it must never self-update inside a pod (avoids the
+  # 'broken install' auto-repair that raced the first request into a 403)
+  [ "$(in_pod 'echo $DISABLE_AUTOUPDATER')" = "1" ]
+  # the native install path (~/.local/bin/claude) points at the real binary
+  in_pod 'test -x ~/.local/bin/claude'
+}

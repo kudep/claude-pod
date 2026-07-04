@@ -75,6 +75,10 @@ cmd_up() {
   RUN_ARGS+=( --name "${CNAME}" --hostname "cpod" )
   RUN_ARGS+=( --label "cpod.managed=1" --label "cpod.project=${PROJECT_DIR}" --label "cpod.runtime=${RT}" )
   RUN_ARGS+=( -e "CONTAINER_HOME=${CONTAINER_HOME}" )
+  # The image ships a pinned Claude Code; it must never self-update inside a pod. Without
+  # this, a host ~/.claude.json recorded as a "native" install makes claude see its recorded
+  # path as broken, auto-update, and race the first request into a 403.
+  RUN_ARGS+=( -e "DISABLE_AUTOUPDATER=1" )
 
   local a
   while IFS= read -r a; do [ -n "$a" ] && RUN_ARGS+=( "$a" ); done < <(rt_userns_args)
