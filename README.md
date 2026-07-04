@@ -105,6 +105,20 @@ caches (uv/pip/npm) survive `down` + recreate — a big speed-up when you rebuil
 Named volumes are kept by `down`; add `--volumes` to drop the cache volume too, or use
 `cpod prune` to bulk-remove stopped containers.
 
+### Proxies
+
+Host `http(s)_proxy`/`no_proxy` are forwarded automatically, with `localhost`/`127.0.0.1`
+rewritten to the container's host-gateway so a host-local proxy stays reachable (verbatim
+under `--net-host`, which shares the host loopback). Since Claude's API is **HTTPS**, if the
+host defines only `http_proxy` (no `https_proxy`), cpod mirrors it onto `https_proxy` inside
+the pod — so a single HTTP proxy that also does `CONNECT` just works, no manual
+`https_proxy=…` needed.
+
+One caveat cpod can't paper over: the proxy must be *reachable from the container*. A proxy
+bound to `127.0.0.1` only is reachable under `--net-host`; from the default (bridge) network
+it must listen on a routable address (e.g. `0.0.0.0`). Changing proxy settings requires
+recreating the pod (`cpod down && cpod up`) — env is applied at creation.
+
 ## Host requirements
 
 - `podman` **or** `docker`

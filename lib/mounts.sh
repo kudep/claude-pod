@@ -36,18 +36,37 @@ mounts_add_claude() {
   return 0
 }
 
+# Rewrite a host-local proxy URL to the container's host-gateway so a localhost
+# proxy on the host stays reachable from inside (a no-op under --net-host, where
+# the container already shares the host loopback).
+_proxy_rewrite() {
+  local v="$1" gw
+  if [ "${CPOD_NET_HOST}" != "1" ]; then
+    gw="$(rt_host_gateway_host)"
+    v="${v//localhost/$gw}"; v="${v//127.0.0.1/$gw}"
+  fi
+  printf '%s' "$v"
+}
+
 # Proxy passthrough with localhost -> host-gateway rewrite (skipped under --net-host).
 mounts_add_proxy() {
-  local gw var val
-  gw="$(rt_host_gateway_host)"
+  local var val
   for var in http_proxy https_proxy ftp_proxy no_proxy \
              HTTP_PROXY HTTPS_PROXY FTP_PROXY NO_PROXY; do
     val="${!var:-}"; [ -n "$val" ] || continue
-    if [ "${CPOD_NET_HOST}" != "1" ]; then
-      val="${val//localhost/$gw}"; val="${val//127.0.0.1/$gw}"
-    fi
-    RUN_ARGS+=( -e "${var}=${val}" )
+    RUN_ARGS+=( -e "${var}=$(_proxy_rewrite "$val")" )
   done
+
+  # Claude's API is HTTPS. Many setups define only http_proxy (a single proxy that
+  # also handles HTTPS via CONNECT). Without https_proxy, claude's API traffic would
+  # bypass it and fail — so mirror the HTTP proxy onto HTTPS when the host lacks one.
+  local http_any="${http_proxy:-${HTTP_PROXY:-}}"
+  if [ -n "$http_any" ] && [ -z "${https_proxy:-}" ] && [ -z "${HTTPS_PROXY:-}" ]; then
+    local hv; hv="$(_proxy_rewrite "$http_any")"
+    RUN_ARGS+=( -e "https_proxy=${hv}" -e "HTTPS_PROXY=${hv}" )
+    log_step "no host https_proxy — routing HTTPS (Claude's API) through http_proxy: ${hv}"
+  fi
+  return 0
 }
 
 # --inherit-env: forward all host env except the secret denylist. Plus --env passthroughs.

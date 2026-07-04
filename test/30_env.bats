@@ -70,3 +70,16 @@ teardown() { cpod_cleanup; }
   run in_pod 'echo $http_proxy'
   [[ "$output" == *"host.docker.internal"* ]] || [[ "$output" == *"host.containers.internal"* ]]
 }
+
+@test "proxy: http_proxy is mirrored onto https_proxy (Claude's API is HTTPS)" {
+  make_project
+  export http_proxy="http://localhost:1084"
+  unset https_proxy HTTPS_PROXY 2>/dev/null || true
+  CPOD_NO_ATTACH=1 run cpod up --key none
+  [ "$status" -eq 0 ]
+  resolve_cname
+  run in_pod 'echo $https_proxy'
+  [ -n "$output" ]
+  [[ "$output" == *"1084"* ]]
+  [[ "$output" == *"host.docker.internal"* ]] || [[ "$output" == *"host.containers.internal"* ]]
+}
