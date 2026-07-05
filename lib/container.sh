@@ -93,10 +93,12 @@ cmd_up() {
   # this, a host ~/.claude.json recorded as a "native" install makes claude see its recorded
   # path as broken, auto-update, and race the first request into a 403.
   RUN_ARGS+=( -e "DISABLE_AUTOUPDATER=1" )
-  # No process in the pod can ever gain privileges via SUID/SGID or file capabilities —
-  # neutralizes a whole class of in-container privilege escalation. We run non-root and
-  # never need sudo, so there is no downside.
-  RUN_ARGS+=( --security-opt no-new-privileges )
+  # no-new-privileges blocks SUID/SGID escalation — but that also disables sudo. So it is
+  # applied only when root (sudo) is OFF (guarded/locked / --no-root). In the default
+  # profile sudo is available for apt/setup, at the cost of this hardening.
+  if [ "${CPOD_ROOT:-1}" != "1" ]; then
+    RUN_ARGS+=( --security-opt no-new-privileges )
+  fi
 
   local a
   while IFS= read -r a; do [ -n "$a" ] && RUN_ARGS+=( "$a" ); done < <(rt_userns_args)

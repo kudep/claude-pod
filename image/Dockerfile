@@ -22,7 +22,7 @@ RUN set -eux; \
         git openssh-client \
         build-essential pkg-config \
         ripgrep jq less vim-tiny \
-        locales tini \
+        locales tini sudo \
         docker.io; \
     rm -rf /var/lib/apt/lists/*
 
@@ -52,7 +52,9 @@ RUN set -eux; \
     else useradd -u "${HOST_UID}" -g "${HOST_GID}" -s /bin/bash "${HOST_USER}"; fi; \
     mkdir -p "${HOST_HOME}/.ssh"; \
     chown -R "${HOST_UID}:${HOST_GID}" "${HOST_HOME}"; \
-    chmod 700 "${HOST_HOME}/.ssh"
+    chmod 700 "${HOST_HOME}/.ssh"; \
+    printf '%s ALL=(ALL) NOPASSWD:ALL\n' "${HOST_USER}" > /etc/sudoers.d/cpod; \
+    chmod 440 /etc/sudoers.d/cpod
 
 COPY entrypoint.sh /usr/local/bin/cpod-entrypoint
 RUN chmod +x /usr/local/bin/cpod-entrypoint

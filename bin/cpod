@@ -21,7 +21,9 @@ CPOD_RUN_CMD=""
 CPOD_INHERIT_ENV=0
 CPOD_EXTRA_ENV=()
 CPOD_CLAUDE_HARDENED=0
+CPOD_ROOT=1               # --root/--no-root: passwordless sudo in the pod (on in the default profile)
 CPOD_NET_HOST=0
+CPOD_AUTO_PROXY=0         # --proxy: forward+resolve the host http(s)_proxy into the pod (off by default)
 CPOD_PORTS=()
 CPOD_VOLUMES=()           # extra -v/--volume bind mounts and named volumes
 CPOD_CACHE_VOL=0          # --cache-volume: per-project persistent ~/.cache
@@ -67,10 +69,9 @@ ${_C_GRN}Commands:${_C_RST}
   (no command)  smart mode: none -> up, stopped -> start, running -> attach
 
 ${_C_GRN}Trust profiles (presets; any explicit flag still overrides):${_C_RST}
-  --profile default   (default) key rw, ~/.claude rw, docker auto
-  --profile guarded   key ro, --claude-hardened, no docker — for semi-trusted code
-  --profile locked    key none, --claude-hardened, no docker, --rm — for untrusted code
-                      (all pods also run with no-new-privileges)
+  --profile default   (default) key rw, ~/.claude rw, docker auto, root (sudo) ON
+  --profile guarded   key ro, --claude-hardened, no docker, root OFF (no-new-privileges)
+  --profile locked    key none, --claude-hardened, no docker, --rm, root OFF (no-new-privileges)
 
 ${_C_GRN}Key (git access to GitHub), modes:${_C_RST}
   --key rw      (default) dedicated deploy key with PUSH rights to THIS repo only
@@ -89,7 +90,11 @@ ${_C_GRN}Other flags:${_C_RST}
   -v, --volume SPEC     extra bind mount or named volume (HOST:CONT[:opts] or NAME:CONT[:opts]); repeatable
   --cache-volume        mount a persistent per-project named volume at ~/.cache (survives recreation)
   --rm                  remove the container when the session ends (ephemeral)
-  --net-host            host network (handy for proxies; weakens isolation; ignores -p)
+  --root | --no-root    passwordless sudo in the pod for apt/setup (ON in default profile;
+                        --no-root instead adds no-new-privileges, blocking SUID escalation)
+  --proxy               forward + resolve the host http(s)_proxy into the pod (OFF by default;
+                        without it the pod uses direct network — better for apt/git/setup)
+  --net-host            host network (needed for a localhost proxy on rootless podman; weakens isolation)
   --gpu | --no-gpu      force GPU on/off (default: autodetect)
   --docker | --no-docker  enable/disable docker socket passthrough (default: auto per project)
   --runtime podman|docker  pick the runtime (default: podman, else docker)
@@ -104,21 +109,22 @@ EOF
 # ---- profiles ----------------------------------------------------------------
 # A --profile seeds trust-level defaults for the other flags. It is resolved BEFORE
 # the main parse loop so any explicit flag (wherever it appears) overrides the preset.
-#   default  key=rw    claude=rw        docker=auto  net=bridge
-#   guarded  key=ro    claude=hardened  docker=off   net=bridge
-#   locked   key=none  claude=hardened  docker=off   net=bridge  --rm
-# (no-new-privileges is always on, independent of profile. A network egress allowlist
-#  is intentionally NOT part of any profile — see docs/SECURITY.md for why.)
+#   default  key=rw    claude=rw        docker=auto  root(sudo)=on
+#   guarded  key=ro    claude=hardened  docker=off   root=off  (no-new-privileges on)
+#   locked   key=none  claude=hardened  docker=off   root=off  (no-new-privileges on) --rm
+# root=on means passwordless sudo in the pod (convenient install/setup); root=off adds
+# no-new-privileges (SUID can't escalate) instead. A network egress allowlist is
+# intentionally NOT part of any profile — see docs/SECURITY.md for why.
 apply_profile() {
   case "$1" in
-    default|"") CPOD_PROFILE="default" ;;
+    default|"") CPOD_PROFILE="default"; CPOD_ROOT=1 ;;
     guarded)
       CPOD_PROFILE="guarded"
-      CPOD_KEY_MODE="ro"; CPOD_CLAUDE_HARDENED=1
+      CPOD_KEY_MODE="ro"; CPOD_CLAUDE_HARDENED=1; CPOD_ROOT=0
       CPOD_DIND="off"; CPOD_DIND_EXPLICIT=1; CPOD_NET_HOST=0 ;;
     locked)
       CPOD_PROFILE="locked"
-      CPOD_KEY_MODE="none"; CPOD_CLAUDE_HARDENED=1
+      CPOD_KEY_MODE="none"; CPOD_CLAUDE_HARDENED=1; CPOD_ROOT=0
       CPOD_DIND="off"; CPOD_DIND_EXPLICIT=1; CPOD_NET_HOST=0; CPOD_RM=1 ;;
     *) log_error "unknown --profile: '$1' (use default|guarded|locked)"; usage; exit 2 ;;
   esac
@@ -165,6 +171,9 @@ while [ $# -gt 0 ]; do
     --volumes)      CPOD_DOWN_VOLUMES=1; shift ;;
     -f|--follow)    CPOD_LOGS_FOLLOW=1; shift ;;
     --net-host|--network-host) CPOD_NET_HOST=1; shift ;;
+    --proxy|--auto-proxy) CPOD_AUTO_PROXY=1; shift ;;
+    --root)         CPOD_ROOT=1; shift ;;
+    --no-root)      CPOD_ROOT=0; shift ;;
     --gpu)          CPOD_GPU=on; shift ;;
     --no-gpu)       CPOD_GPU=off; shift ;;
     --docker)       CPOD_DIND=on;  CPOD_DIND_EXPLICIT=1; shift ;;
