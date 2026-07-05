@@ -4,6 +4,7 @@
 
 _cpod() {
   _arguments -s \
+    '--profile[trust-level preset]:profile:(default guarded locked)' \
     '--key[git access mode]:mode:(rw ro none)' \
     '--key-file[deliver the deploy key as a file instead of ssh-agent]' \
     '--claude[run claude on entry instead of a shell]' \

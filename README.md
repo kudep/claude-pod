@@ -66,6 +66,21 @@ cpod up --key-file   # deliver the key as a file (ro) instead of ssh-agent
 If the directory is not a git repo or `origin` is not on GitHub, the key block is simply
 skipped and the container still starts (git works locally).
 
+## Trust profiles
+
+`--profile` presets the security-relevant flags to a trust level; any explicit flag still
+overrides the preset.
+
+```bash
+cpod up --profile default   # (default) key rw, ~/.claude rw, docker auto — your own code
+cpod up --profile guarded   # key ro, --claude-hardened, no docker — semi-trusted code
+cpod up --profile locked    # key none, --claude-hardened, no docker, --rm — untrusted code
+cpod up --profile locked --key ro    # profiles are just defaults — override any flag
+```
+
+Every pod (all profiles) runs with `no-new-privileges`. Profiles do **not** include a network
+egress allowlist — see [weak sides](#weak-sides--what-it-does-not-protect).
+
 ## Handy flags
 
 ```bash
@@ -118,6 +133,50 @@ One caveat cpod can't paper over: the proxy must be *reachable from the containe
 bound to `127.0.0.1` only is reachable under `--net-host`; from the default (bridge) network
 it must listen on a routable address (e.g. `0.0.0.0`). Changing proxy settings requires
 recreating the pod (`cpod down && cpod up`) — env is applied at creation.
+
+## How it works — principles & isolation
+
+- **One container per project.** The name is derived from the project's absolute path, and the
+  project is bind-mounted at the **same absolute path** inside — so `~/.claude/projects/<slug>`
+  keeps matching and Claude sessions continue seamlessly across runs.
+- **Non-root, as you.** The in-image user has your host uid/gid (podman rootless keeps the
+  mapping; docker matches it). No root on the host; bind-mount ownership stays correct.
+- **Per-repo deploy key, not your account.** GitHub access is a dedicated key scoped to *this one
+  repo*, delivered through **ssh-agent** (the private key never lands on the container disk) and
+  **revoked on `down`**. Your `~/.ssh`, `~/.config/gh`, `GH_TOKEN`/`*_API_KEY` are never forwarded;
+  git identity is passed as **values only** (name/email), not your `~/.gitconfig`.
+- **Claude, shared but pinned.** `~/.claude` is mounted so settings/history/sessions carry over;
+  `.credentials.json` is **read-only**; `~/.claude.json` is mounted so the pod isn't a fresh
+  install. The pod's Claude **never self-updates** (`DISABLE_AUTOUPDATER=1`).
+- **Kernel-level hardening.** Non-root + empty added capabilities + the runtime's default seccomp
+  profile + **`no-new-privileges`** (SUID/SGID can't escalate). The docker socket is **not** mounted
+  unless the project needs it or you pass `--docker`. The container has its **own** `/tmp` and root
+  filesystem — the host `/tmp`, `/etc`, `/var`, and home are not visible.
+- **Isolated network by default.** A bridge network; a host-local proxy is reached via the rewritten
+  host-gateway address (no host netns). `--net-host` is opt-in.
+- **Trust profiles.** `--profile guarded`/`locked` bundle the read-only/no-docker/hardened settings
+  for semi- and un-trusted code (see above).
+
+## Weak sides — what it does NOT protect
+
+`claude-pod` **reduces the blast radius** of a compromised or prompt-injected agent — it is **not
+an absolute sandbox** against hostile code. Know these before running untrusted repos:
+
+- **`~/.claude` is rw → host-escalation via hooks.** Code in the pod can write a malicious
+  `settings.json`/hook that later runs **on the host** when you launch Claude there. No escape
+  needed — the access is legitimate. Mitigate with `--profile guarded`/`locked` (`--claude-hardened`).
+- **Token + project map are readable, egress is open → exfiltration.** The Claude OAuth token
+  (`~/.claude/.credentials.json`) and your project map (`~/.claude.json`) are readable, and the pod
+  has working network (it must reach the API). There is **no built-in egress allowlist** — a hard
+  block can't be done in a rootless, cap-dropped container; it needs **host-level firewalling**.
+  Rotate the token after untrusted runs; enforce egress at the host if you need it.
+- **Project writes land on the host** immediately (by design). A `--key rw` deploy key (default)
+  can **push/force-push** to that one repo.
+- **Footguns that weaken isolation:** `--docker` (≈ root on host), `--net-host` (shares the host
+  network incl. its `localhost` services), `--inherit-env` (an oddly-named secret may slip past the
+  denylist). Avoid these for untrusted code.
+
+Full threat model and residual risks: [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ## Host requirements
 

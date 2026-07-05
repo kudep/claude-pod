@@ -46,6 +46,19 @@ setup() { cpod_isolate_state; }
   [[ "$output" == *"--key must be rw|ro|none"* ]]
 }
 
+@test "invalid --profile is rejected with a hint" {
+  run cpod up --profile bogus
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"unknown --profile"* ]]
+}
+
+@test "help lists the trust profiles" {
+  run cpod -h
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--profile guarded"* ]]
+  [[ "$output" == *"--profile locked"* ]]
+}
+
 @test "two commands at once -> error" {
   run cpod up down
   [ "$status" -eq 2 ]

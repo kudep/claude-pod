@@ -57,6 +57,20 @@ login_exec() {
   rt exec "${tty[@]}" "${wa[@]}" -e "TERM=${TERM:-xterm-256color}" "$CNAME" "${argv[@]}"
 }
 
+# Docker named volumes are created root-owned, so a non-root pod can't write to a fresh
+# --cache-volume. Pre-create it and chown to the host uid on first use. Rootless podman
+# already owns new volumes as the container user, so this is a no-op there.
+cache_volume_init() {
+  [ "${CPOD_CACHE_VOL:-0}" = "1" ] || return 0
+  rt_is_podman && return 0
+  # chown is idempotent — run it every time (also fixes a root-owned volume left by an
+  # older cpod), it's cheap next to the pod itself and --cache-volume is opt-in.
+  rt volume create "$CACHE_VOL" >/dev/null 2>&1 || true
+  rt run --rm -u 0:0 --entrypoint chown -v "${CACHE_VOL}:/c" "$IMAGE" \
+    "${HOST_UID}:${HOST_GID}" /c >/dev/null 2>&1 \
+    || log_warn "cache volume ${CACHE_VOL}: could not set ownership (may be root-owned inside)"
+}
+
 cmd_up() {
   container_name
   if container_exists; then
@@ -79,6 +93,10 @@ cmd_up() {
   # this, a host ~/.claude.json recorded as a "native" install makes claude see its recorded
   # path as broken, auto-update, and race the first request into a 403.
   RUN_ARGS+=( -e "DISABLE_AUTOUPDATER=1" )
+  # No process in the pod can ever gain privileges via SUID/SGID or file capabilities —
+  # neutralizes a whole class of in-container privilege escalation. We run non-root and
+  # never need sudo, so there is no downside.
+  RUN_ARGS+=( --security-opt no-new-privileges )
 
   local a
   while IFS= read -r a; do [ -n "$a" ] && RUN_ARGS+=( "$a" ); done < <(rt_userns_args)
@@ -97,6 +115,7 @@ cmd_up() {
   [ -n "${DK_KEYID:-}" ] && RUN_ARGS+=( --label "cpod.keyid=${DK_KEYID}" )
   [ -n "${DK_SLUG:-}" ]  && RUN_ARGS+=( --label "cpod.repo=${DK_SLUG}" )
 
+  cache_volume_init
   log_info "creating container ${CNAME}"
   if ! rt run -d "${RUN_ARGS[@]}" "$IMAGE" >/dev/null; then
     # Don't leave the just-registered deploy key / agent orphaned on failure.

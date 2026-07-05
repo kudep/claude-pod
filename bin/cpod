@@ -13,6 +13,7 @@ for m in log runtime mounts gpu dind deploykey container; do . "${LIB}/${m}.sh";
 # ---- defaults ----------------------------------------------------------------
 CPOD_STATE="${CLAUDE_POD_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/claude-pod}"
 CPOD_RUNTIME=""
+CPOD_PROFILE="default"    # default | guarded | locked (a trust-level preset of the flags below)
 CPOD_KEY_MODE="rw"        # rw | ro | none
 CPOD_KEY_FILE=0
 CPOD_RUN_CLAUDE=0
@@ -65,6 +66,12 @@ ${_C_GRN}Commands:${_C_RST}
   build         build the image (without starting; --rebuild to rebuild)
   (no command)  smart mode: none -> up, stopped -> start, running -> attach
 
+${_C_GRN}Trust profiles (presets; any explicit flag still overrides):${_C_RST}
+  --profile default   (default) key rw, ~/.claude rw, docker auto
+  --profile guarded   key ro, --claude-hardened, no docker — for semi-trusted code
+  --profile locked    key none, --claude-hardened, no docker, --rm — for untrusted code
+                      (all pods also run with no-new-privileges)
+
 ${_C_GRN}Key (git access to GitHub), modes:${_C_RST}
   --key rw      (default) dedicated deploy key with PUSH rights to THIS repo only
   --key ro      read-only deploy key — push is rejected
@@ -94,6 +101,36 @@ Details and security model: ${CPOD_HOME}/docs/
 EOF
 }
 
+# ---- profiles ----------------------------------------------------------------
+# A --profile seeds trust-level defaults for the other flags. It is resolved BEFORE
+# the main parse loop so any explicit flag (wherever it appears) overrides the preset.
+#   default  key=rw    claude=rw        docker=auto  net=bridge
+#   guarded  key=ro    claude=hardened  docker=off   net=bridge
+#   locked   key=none  claude=hardened  docker=off   net=bridge  --rm
+# (no-new-privileges is always on, independent of profile. A network egress allowlist
+#  is intentionally NOT part of any profile — see docs/SECURITY.md for why.)
+apply_profile() {
+  case "$1" in
+    default|"") CPOD_PROFILE="default" ;;
+    guarded)
+      CPOD_PROFILE="guarded"
+      CPOD_KEY_MODE="ro"; CPOD_CLAUDE_HARDENED=1
+      CPOD_DIND="off"; CPOD_DIND_EXPLICIT=1; CPOD_NET_HOST=0 ;;
+    locked)
+      CPOD_PROFILE="locked"
+      CPOD_KEY_MODE="none"; CPOD_CLAUDE_HARDENED=1
+      CPOD_DIND="off"; CPOD_DIND_EXPLICIT=1; CPOD_NET_HOST=0; CPOD_RM=1 ;;
+    *) log_error "unknown --profile: '$1' (use default|guarded|locked)"; usage; exit 2 ;;
+  esac
+}
+
+for ((_i=1; _i<=$#; _i++)); do
+  case "${!_i}" in
+    --profile)   _j=$((_i+1)); apply_profile "${!_j:-}" ;;
+    --profile=*) apply_profile "${!_i#*=}" ;;
+  esac
+done
+
 # ---- parse args --------------------------------------------------------------
 CMD=""
 while [ $# -gt 0 ]; do
@@ -107,6 +144,8 @@ while [ $# -gt 0 ]; do
     help|-h|--help) CMD="help"; shift ;;
     --runtime)      CPOD_RUNTIME="${2:-}"; shift 2 ;;
     --runtime=*)    CPOD_RUNTIME="${1#*=}"; shift ;;
+    --profile)      shift 2 ;;   # already applied in the pre-scan above
+    --profile=*)    shift ;;
     --key)          CPOD_KEY_MODE="${2:-}"; shift 2 ;;
     --key=*)        CPOD_KEY_MODE="${1#*=}"; shift ;;
     --key-file)     CPOD_KEY_FILE=1; shift ;;

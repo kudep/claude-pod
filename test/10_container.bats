@@ -99,6 +99,25 @@ teardown() { cpod_cleanup; }
   in_pod "command -v node && command -v uv && command -v git && command -v rg"
 }
 
+@test "every pod runs with no-new-privileges" {
+  make_project
+  CPOD_NO_ATTACH=1 cpod up --key none
+  resolve_cname
+  run bash -c "\"$RT\" inspect \"$CPOD_CNAME\" | grep -i no-new-privileges"
+  [ "$status" -eq 0 ]
+}
+
+@test "--profile locked hardens ~/.claude executable config (settings.json ro)" {
+  [ -f "$HOME/.claude/settings.json" ] || skip "no ~/.claude/settings.json to check"
+  make_project
+  CPOD_NO_ATTACH=1 run cpod up --profile locked
+  [ "$status" -eq 0 ]
+  resolve_cname
+  # locked => --claude-hardened => settings.json is mounted read-only
+  run in_pod 'echo x >> ~/.claude/settings.json'
+  [ "$status" -ne 0 ]
+}
+
 @test "claude auto-update is disabled and its recorded install path resolves" {
   make_project
   CPOD_NO_ATTACH=1 cpod up --key none

@@ -6,12 +6,13 @@ _cpod() {
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
   local cmds="up start attach shell restart exec logs inspect stop down prune ls list status build help"
-  local flags="--key --key-file --claude --run --claude-hardened --inherit-env --env \
+  local flags="--profile --key --key-file --claude --run --claude-hardened --inherit-env --env \
                -p --port -v --volume --cache-volume --rm --volumes -f --follow \
                --net-host --gpu --no-gpu --docker --no-docker --runtime \
                --rebuild --all --help -h"
 
   case "$prev" in
+    --profile) COMPREPLY=( $(compgen -W "default guarded locked" -- "$cur") ); return ;;
     --key)     COMPREPLY=( $(compgen -W "rw ro none" -- "$cur") ); return ;;
     --runtime) COMPREPLY=( $(compgen -W "podman docker" -- "$cur") ); return ;;
     --run|--env|-p|--port|-v|--volume) return ;;   # free-form value

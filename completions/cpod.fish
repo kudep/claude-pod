@@ -22,6 +22,7 @@ for cmd in cpod claude-pod
     complete -c $cmd -n __fish_use_subcommand -a help    -d 'show help'
 
     # flags (available anywhere)
+    complete -c $cmd -l profile        -x -a 'default guarded locked' -d 'trust-level preset'
     complete -c $cmd -l key            -x -a 'rw ro none' -d 'git access mode'
     complete -c $cmd -l key-file       -d 'deliver deploy key as a file'
     complete -c $cmd -l claude         -d 'run claude on entry'
