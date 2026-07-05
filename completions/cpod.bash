@@ -8,7 +8,7 @@ _cpod() {
   local cmds="up start attach shell restart exec logs inspect stop down prune ls list status build help"
   local flags="--profile --key --key-file --claude --run --claude-hardened --inherit-env --env \
                -p --port -v --volume --cache-volume --rm --volumes -f --follow \
-               --net-host --gpu --no-gpu --docker --no-docker --runtime \
+               --root --no-root --proxy --net-host --gpu --no-gpu --docker --no-docker --runtime \
                --rebuild --all --help -h"
 
   case "$prev" in

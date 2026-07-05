@@ -20,6 +20,9 @@ _cpod() {
     '--rm[remove the container when the session ends]' \
     '--volumes[(down) also remove the cache volume]' \
     '(-f --follow)'{-f,--follow}'[(logs) stream the logs]' \
+    '(--no-root)--root[passwordless sudo in the pod (default profile)]' \
+    '(--root)--no-root[no sudo + no-new-privileges (hardened)]' \
+    '--proxy[forward the host http(s)_proxy into the pod]' \
     '--net-host[use the host network]' \
     '--gpu[force GPU on]' \
     '--no-gpu[force GPU off]' \

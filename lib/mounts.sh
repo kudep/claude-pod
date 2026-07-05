@@ -48,12 +48,17 @@ _proxy_rewrite() {
   printf '%s' "$v"
 }
 
-# Proxy passthrough with localhost -> host-gateway rewrite (skipped under --net-host).
+# Proxy passthrough (opt-in with --proxy) with localhost -> host-gateway rewrite. OFF by
+# default: forwarding an unreachable proxy silently breaks the pod's network (esp. rootless
+# podman), whereas the pod's direct network is usually what apt/git/setup want.
 mounts_add_proxy() {
-  local var val
+  [ "${CPOD_AUTO_PROXY}" = "1" ] || return 0
+
+  local var val had_local=0
   for var in http_proxy https_proxy ftp_proxy no_proxy \
              HTTP_PROXY HTTPS_PROXY FTP_PROXY NO_PROXY; do
     val="${!var:-}"; [ -n "$val" ] || continue
+    case "$val" in *localhost*|*127.0.0.1*) had_local=1 ;; esac
     RUN_ARGS+=( -e "${var}=$(_proxy_rewrite "$val")" )
   done
 
@@ -62,9 +67,18 @@ mounts_add_proxy() {
   # bypass it and fail — so mirror the HTTP proxy onto HTTPS when the host lacks one.
   local http_any="${http_proxy:-${HTTP_PROXY:-}}"
   if [ -n "$http_any" ] && [ -z "${https_proxy:-}" ] && [ -z "${HTTPS_PROXY:-}" ]; then
+    case "$http_any" in *localhost*|*127.0.0.1*) had_local=1 ;; esac
     local hv; hv="$(_proxy_rewrite "$http_any")"
     RUN_ARGS+=( -e "https_proxy=${hv}" -e "HTTPS_PROXY=${hv}" )
     log_step "no host https_proxy — routing HTTPS (Claude's API) through http_proxy: ${hv}"
+  fi
+
+  # Footgun: on rootless podman a host-local proxy rewritten to the host-gateway is NOT
+  # reachable (slirp blocks host services) unless the pod shares the host network. Warn
+  # instead of leaving the user with a silently dead network.
+  if [ "$had_local" = "1" ] && rt_is_podman && [ "${CPOD_NET_HOST}" != "1" ]; then
+    log_warn "rootless podman: this host-local proxy is unreachable from a bridge pod (slirp)."
+    log_warn "  add --net-host, or drop --proxy to use the pod's direct network."
   fi
   return 0
 }
