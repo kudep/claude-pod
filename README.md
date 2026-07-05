@@ -178,6 +178,46 @@ an absolute sandbox** against hostile code. Know these before running untrusted 
 
 Full threat model and residual risks: [`docs/SECURITY.md`](docs/SECURITY.md).
 
+## Comparison with alternatives
+
+There are several good ways to run Claude Code in a sandbox — they optimize for different things.
+The table scrolls sideways; the recommendations below it are the short version.
+
+| Tool | Isolation | GitHub credentials | Environment | Built-in egress control | Claude session continuity | Runtime |
+|---|---|---|---|---|---|---|
+| **`claude-pod`** (this) | container, **per-project**; non-root; `no-new-privileges`; trust profiles | **per-repo deploy key**, auto-registered and **revoked on `down`** | full Ubuntu/CUDA + Node + `uv` + build tools, **GPU passthrough**, optional DinD | none by default (needs a host firewall) | **seamless** — project mounted at the same absolute path | podman **and** docker |
+| [Claude Code devcontainer][dc] (official) | container | your host token; docs *recommend* a scoped PAT (manual) | your own `Dockerfile`/features | **yes** — `init-firewall.sh` egress allowlist | volume / `${devcontainerId}` | docker (VS Code / CLI) |
+| [`sandbox-runtime`][sr] (Anthropic, native) | **OS-level** sandbox (bubblewrap/seatbelt), **no container** | host creds, typically via a scoped proxy | none — reuses host tools | **yes** — network allowlist | n/a (same host FS, cwd-scoped) | Linux/macOS, no daemon |
+| [`container-use`][cu] (Dagger) | container **+ a git worktree per agent** | ordinary git creds | your image (Dagger) | via Dagger | n/a — designed for fan-out | docker/Dagger |
+| [`claudebox`][cb] & similar wrappers | container | usually **host creds** / `--dangerously-skip-permissions` | preset profiles | none | volume | docker |
+| Plain `docker run` (DIY) | container | whatever you mount in | whatever you build | manual | manual path/volume setup | docker/podman |
+
+[dc]: https://docs.claude.com/en/docs/claude-code/devcontainer
+[sr]: https://github.com/anthropics/sandbox-runtime
+[cu]: https://github.com/dagger/container-use
+[cb]: https://github.com/RchGrav/claudebox
+
+### When to use which
+
+- **Use `claude-pod`** when you want a **full dev environment** (GPU / `uv` / compilers) with
+  **narrow per-repo GitHub access out of the box** and Claude history that **continues seamlessly**
+  between host and container. Best for day-to-day work — including build/train — on **your own**
+  repositories, on either podman or docker.
+- **Use the [official devcontainer][dc]** when you want **team-reproducible** setups in VS Code and a
+  **built-in egress firewall**. Prefer it when a network allowlist matters more than automatic
+  per-repo keys, or your team already lives in devcontainers.
+- **Use [`sandbox-runtime`][sr]** when you want the **lightest** barrier around Bash/tools **without a
+  container**, with an egress allowlist. Prefer it for low-overhead, on-host confinement where you
+  don't need a separate environment or GPU.
+- **Use [`container-use`][cu]** when you run **several agents in parallel** on one repo, each on its
+  own git worktree/branch — multi-agent orchestration rather than one rich environment.
+- **Use [`claudebox`][cb] / wrappers** when you want a quick containerized Claude with preset
+  profiles and **don't need** per-repo key isolation.
+- **Roll your own `docker run`** when you want total manual control and are happy to wire up mounts,
+  credentials, path-matching and cleanup yourself.
+
+A deeper pros/cons breakdown lives in [`docs/PROS_CONS.md`](docs/PROS_CONS.md).
+
 ## Host requirements
 
 - `podman` **or** `docker`
