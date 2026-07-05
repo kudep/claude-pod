@@ -97,6 +97,36 @@ ${_C_GRN}Other flags:${_C_RST}
   --all                 (for ls) show containers of all projects
   -h | --help           this help
 
+${_C_GRN}Examples:${_C_RST}
+  cpod                              # smart mode — create / start / attach as needed
+  cpod up --claude                  # create the pod and launch claude immediately
+  cpod exec claude -p "run tests"   # one-off headless claude in the running pod
+  cpod up --profile guarded         # semi-trusted code: read-only key, hardened config
+  cpod up --profile locked          # untrusted code: no key, hardened, disposable (--rm)
+  cpod up -v ~/datasets:/data:ro    # mount an extra host directory read-only
+  cpod up --cache-volume            # persist ~/.cache (uv/pip/npm) across recreation
+  cpod up -p 8080:80                # publish a port to the host
+  cpod up --net-host                # share the host network (e.g. to reach a localhost proxy)
+  cpod up --run "pytest -q"         # run a command on entry instead of a shell
+  cpod exec bash -lc "ruff check ." # run a quick command without a new pod
+  cpod logs -f                      # follow the pod's logs
+  cpod down --volumes               # remove the pod, revoke the key, drop the cache volume
+  cpod prune --all                  # clean up stopped pods across all projects
+
+${_C_GRN}Recommendations:${_C_RST}
+  Pick a profile by how much you trust the code:
+    your own repo ........... (default)         full convenience, push allowed
+    a PR / dependency ....... --profile guarded  read-only key, ~/.claude hardened
+    untrusted / auditing .... --profile locked   no key, hardened, disposable pod
+  Git access: keep --key rw only for repos you own — it allows push AND force-push to
+    THIS repo. To review code you won't push, use --key ro or --key none.
+  Runtime: rootless podman is the safest default; docker is auto-picked if podman is
+    absent. Override with --runtime podman|docker.
+  Isolation: for untrusted code avoid --net-host, --docker and --inherit-env — each one
+    widens the attack surface. See the security model before relaxing them.
+  Housekeeping: 'cpod down' revokes the deploy key and cleans up — don't leave pods
+    lingering; 'cpod prune' clears stopped ones in bulk.
+
 Details and security model: ${CPOD_HOME}/docs/
 EOF
 }
