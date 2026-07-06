@@ -59,6 +59,13 @@ setup() { cpod_isolate_state; }
   [[ "$output" == *"--profile locked"* ]]
 }
 
+@test "help lists the --root and --proxy flags" {
+  run cpod -h
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--root"* ]]
+  [[ "$output" == *"--proxy"* ]]
+}
+
 @test "two commands at once -> error" {
   run cpod up down
   [ "$status" -eq 2 ]

@@ -72,14 +72,16 @@ skipped and the container still starts (git works locally).
 overrides the preset.
 
 ```bash
-cpod up --profile default   # (default) key rw, ~/.claude rw, docker auto — your own code
-cpod up --profile guarded   # key ro, --claude-hardened, no docker — semi-trusted code
-cpod up --profile locked    # key none, --claude-hardened, no docker, --rm — untrusted code
+cpod up --profile default   # (default) key rw, ~/.claude rw, docker auto, sudo ON — your own code
+cpod up --profile guarded   # key ro, --claude-hardened, no docker, sudo OFF — semi-trusted code
+cpod up --profile locked    # key none, --claude-hardened, no docker, --rm, sudo OFF — untrusted code
 cpod up --profile locked --key ro    # profiles are just defaults — override any flag
 ```
 
-Every pod (all profiles) runs with `no-new-privileges`. Profiles do **not** include a network
-egress allowlist — see [weak sides](#weak-sides--what-it-does-not-protect).
+The **default** profile gives you passwordless `sudo` inside the pod (handy for `apt`/setup).
+`guarded`/`locked` drop it and add `no-new-privileges` (SUID can't escalate) instead; toggle
+directly with `--root`/`--no-root`. Profiles do **not** include a network egress allowlist —
+see [weak sides](#weak-sides--what-it-does-not-protect).
 
 ## Handy flags
 
@@ -95,7 +97,9 @@ cpod up -v ~/datasets:/data:ro # extra bind mount or named volume (docker-style)
 cpod up -v models:/models      # a named volume (auto-created)
 cpod up --cache-volume         # persistent per-project ~/.cache (survives recreation)
 cpod up --rm                   # remove the container when the session ends (ephemeral)
-cpod up --net-host             # host network (handy for proxies; weakens isolation; ignores -p)
+cpod up --root / --no-root     # passwordless sudo in the pod (default) / harden with no-new-privileges
+cpod up --proxy                # forward the host http(s)_proxy into the pod (OFF by default)
+cpod up --net-host             # host network (needed for a localhost proxy on rootless podman; weakens isolation)
 cpod up --gpu / --no-gpu       # force GPU on/off (default: autodetect)
 cpod up --docker / --no-docker # docker socket passthrough (default: auto per project)
 cpod up --runtime docker       # pick the runtime manually
@@ -122,17 +126,16 @@ Named volumes are kept by `down`; add `--volumes` to drop the cache volume too, 
 
 ### Proxies
 
-Host `http(s)_proxy`/`no_proxy` are forwarded automatically, with `localhost`/`127.0.0.1`
-rewritten to the container's host-gateway so a host-local proxy stays reachable (verbatim
-under `--net-host`, which shares the host loopback). Since Claude's API is **HTTPS**, if the
-host defines only `http_proxy` (no `https_proxy`), cpod mirrors it onto `https_proxy` inside
-the pod — so a single HTTP proxy that also does `CONNECT` just works, no manual
-`https_proxy=…` needed.
+Proxy forwarding is **opt-in**: by default the pod uses its own direct network (best for
+`apt`/`git`/setup). Pass **`--proxy`** to forward the host `http(s)_proxy`/`no_proxy`, with
+`localhost`/`127.0.0.1` rewritten to the container's host-gateway so a host-local proxy stays
+reachable. Since Claude's API is **HTTPS**, if the host defines only `http_proxy`, cpod mirrors
+it onto `https_proxy` inside the pod — so a single HTTP proxy that also does `CONNECT` just works.
 
-One caveat cpod can't paper over: the proxy must be *reachable from the container*. A proxy
-bound to `127.0.0.1` only is reachable under `--net-host`; from the default (bridge) network
-it must listen on a routable address (e.g. `0.0.0.0`). Changing proxy settings requires
-recreating the pod (`cpod down && cpod up`) — env is applied at creation.
+Why opt-in: an unreachable forwarded proxy silently breaks the pod's network. On **rootless
+podman** a host-`localhost` proxy is unreachable from a bridge pod (slirp) — cpod warns, and you
+need `--net-host`; on docker the proxy must listen on a routable address (e.g. `0.0.0.0`) to be
+reachable from the bridge. Proxy settings apply at creation — change them via `cpod down && cpod up`.
 
 ## How it works — principles & isolation
 
@@ -148,12 +151,14 @@ recreating the pod (`cpod down && cpod up`) — env is applied at creation.
 - **Claude, shared but pinned.** `~/.claude` is mounted so settings/history/sessions carry over;
   `.credentials.json` is **read-only**; `~/.claude.json` is mounted so the pod isn't a fresh
   install. The pod's Claude **never self-updates** (`DISABLE_AUTOUPDATER=1`).
-- **Kernel-level hardening.** Non-root + empty added capabilities + the runtime's default seccomp
-  profile + **`no-new-privileges`** (SUID/SGID can't escalate). The docker socket is **not** mounted
-  unless the project needs it or you pass `--docker`. The container has its **own** `/tmp` and root
-  filesystem — the host `/tmp`, `/etc`, `/var`, and home are not visible.
-- **Isolated network by default.** A bridge network; a host-local proxy is reached via the rewritten
-  host-gateway address (no host netns). `--net-host` is opt-in.
+- **Kernel-level hardening.** Non-root login user + empty added capabilities + the runtime's default
+  seccomp profile. The **default** profile also gives passwordless `sudo` for setup; `guarded`/`locked`
+  drop it and add **`no-new-privileges`** so SUID/SGID can't escalate. The docker socket is **not**
+  mounted unless the project needs it or you pass `--docker`. The container has its **own** `/tmp` and
+  root filesystem — the host `/tmp`, `/etc`, `/var`, and home are not visible.
+- **Isolated, direct network by default.** A bridge network; the pod uses its own direct egress. Proxy
+  forwarding is opt-in (`--proxy`, host-local proxy rewritten to the host-gateway); `--net-host` shares
+  the host network stack (needed for a `localhost` proxy on rootless podman).
 - **Trust profiles.** `--profile guarded`/`locked` bundle the read-only/no-docker/hardened settings
   for semi- and un-trusted code (see above).
 
@@ -185,7 +190,7 @@ The table scrolls sideways; the recommendations below it are the short version.
 
 | Tool | Isolation | GitHub credentials | Environment | Built-in egress control | Claude session continuity | Runtime |
 |---|---|---|---|---|---|---|
-| **`claude-pod`** (this) | container, **per-project**; non-root; `no-new-privileges`; trust profiles | **per-repo deploy key**, auto-registered and **revoked on `down`** | full Ubuntu/CUDA + Node + `uv` + build tools, **GPU passthrough**, optional DinD | none by default (needs a host firewall) | **seamless** — project mounted at the same absolute path | podman **and** docker |
+| **`claude-pod`** (this) | container, **per-project**; non-root login; trust profiles (`no-new-privileges` in guarded/locked, sudo in default) | **per-repo deploy key**, auto-registered and **revoked on `down`** | full Ubuntu/CUDA + Node + `uv` + build tools, **GPU passthrough**, optional DinD | none by default (needs a host firewall) | **seamless** — project mounted at the same absolute path | podman **and** docker |
 | [Claude Code devcontainer][dc] (official) | container | your host token; docs *recommend* a scoped PAT (manual) | your own `Dockerfile`/features | **yes** — `init-firewall.sh` egress allowlist | volume / `${devcontainerId}` | docker (VS Code / CLI) |
 | [`sandbox-runtime`][sr] (Anthropic, native) | **OS-level** sandbox (bubblewrap/seatbelt), **no container** | host creds, typically via a scoped proxy | none — reuses host tools | **yes** — network allowlist | n/a (same host FS, cwd-scoped) | Linux/macOS, no daemon |
 | [`container-use`][cu] (Dagger) | container **+ a git worktree per agent** | ordinary git creds | your image (Dagger) | via Dagger | n/a — designed for fan-out | docker/Dagger |

@@ -12,8 +12,8 @@ sensitive machines.
 | Agent reaching **other repositories** | the GitHub **deploy key** is bound to one repo; revoked on `down` |
 | **Copying** the private key out of the container | ssh-agent forwarding: no key on the container disk (socket only) |
 | Corrupting the **Claude token** (`~/.claude/.credentials.json`) | mounted **read-only** |
-| Acting as **root on the host** | non-root user (host uid/gid), podman rootless |
-| In-container privilege escalation via **SUID/SGID** | every pod runs with `no-new-privileges` — setuid bits and file caps are ignored |
+| Acting as **root on the host** | non-root login user (host uid/gid), podman rootless |
+| In-container privilege escalation via **SUID/SGID** | `guarded`/`locked` (or `--no-root`) run with `no-new-privileges` — setuid bits and file caps are ignored. The `default` profile keeps sudo instead (see profiles) |
 | Trashing/damaging the **host system** | container FS isolation; only the project dir, `~/.claude` and `~/.claude.json` are visible |
 
 ## What is NOT shared (to preempt confusion)
@@ -29,13 +29,16 @@ it is not describing a `claude-pod` container.
 
 `--profile` presets the flags below to a trust level (any explicit flag still overrides):
 
-| Profile | key | ~/.claude | docker | intended for |
-|---|---|---|---|---|
-| `default` | rw | rw | auto | your own code |
-| `guarded` | ro | `--claude-hardened` (exec config ro) | off | semi-trusted code |
-| `locked` | none | `--claude-hardened` | off | untrusted code (also `--rm`) |
+| Profile | key | ~/.claude | docker | root (sudo) | intended for |
+|---|---|---|---|---|---|
+| `default` | rw | rw | auto | **sudo on**, no-new-privileges off | your own code |
+| `guarded` | ro | `--claude-hardened` (exec config ro) | off | no sudo, no-new-privileges on | semi-trusted code |
+| `locked` | none | `--claude-hardened` | off | no sudo, no-new-privileges on (also `--rm`) | untrusted code |
 
-`no-new-privileges` is on in **all** profiles. A network **egress allowlist is intentionally
+The **default** profile grants passwordless `sudo` in the pod (for `apt`/setup) — convenient but it
+means container-root is reachable (confined to the pod; under rootless podman it maps back to your
+host user). `guarded`/`locked` drop sudo and add `no-new-privileges` instead; `--root`/`--no-root`
+toggle it directly. A network **egress allowlist is intentionally
 not part of any profile** — see residual risk #1.
 
 ## Residual risks (important)

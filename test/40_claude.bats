@@ -38,7 +38,7 @@ pod_claude() {
   setup_test_proxy
   claude_auth_up_args
   nethost_up_args
-  CPOD_NO_ATTACH=1 run cpod up --key none "${CPOD_AUTH_ARGS[@]}" "${CPOD_NETHOST_ARGS[@]}"
+  CPOD_NO_ATTACH=1 run cpod up --key none --proxy "${CPOD_AUTH_ARGS[@]}" "${CPOD_NETHOST_ARGS[@]}"
   [ "$status" -eq 0 ]
   resolve_cname
   # A one-token reply needs no tools, so no permission prompt — deterministic to assert.
@@ -56,7 +56,7 @@ pod_claude() {
   [ -n "${https_proxy:-${http_proxy:-}}" ] \
     || skip "no proxy configured — set CLAUDE_POD_TEST_PROXY or export http(s)_proxy"
   claude_auth_up_args
-  CPOD_NO_ATTACH=1 run cpod up --key none "${CPOD_AUTH_ARGS[@]}"
+  CPOD_NO_ATTACH=1 run cpod up --key none --proxy "${CPOD_AUTH_ARGS[@]}"
   [ "$status" -eq 0 ]
   resolve_cname
   # The proxy var reached the pod, and a host-local proxy was rewritten to the gateway.
@@ -80,7 +80,7 @@ pod_claude() {
   export HTTP_PROXY="http://127.0.0.1:1"  HTTPS_PROXY="http://127.0.0.1:1"
   claude_auth_up_args
   nethost_up_args
-  CPOD_NO_ATTACH=1 run cpod up --key none "${CPOD_AUTH_ARGS[@]}" "${CPOD_NETHOST_ARGS[@]}"
+  CPOD_NO_ATTACH=1 run cpod up --key none --proxy "${CPOD_AUTH_ARGS[@]}" "${CPOD_NETHOST_ARGS[@]}"
   [ "$status" -eq 0 ]
   resolve_cname
   run pod_claude "Reply with exactly this token and nothing else: ${MARKER}" 60

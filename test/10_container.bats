@@ -99,12 +99,24 @@ teardown() { cpod_cleanup; }
   in_pod "command -v node && command -v uv && command -v git && command -v rg"
 }
 
-@test "every pod runs with no-new-privileges" {
+@test "default profile: sudo works (root) and no-new-privileges is NOT set" {
   make_project
   CPOD_NO_ATTACH=1 cpod up --key none
   resolve_cname
+  # default => --root => passwordless sudo, and no-new-privileges is off (it would block sudo)
+  run bash -c "\"$RT\" inspect \"$CPOD_CNAME\" | grep -i no-new-privileges"
+  [ "$status" -ne 0 ]
+  in_pod 'sudo -n true'
+}
+
+@test "--no-root: no-new-privileges is set and sudo is blocked" {
+  make_project
+  CPOD_NO_ATTACH=1 cpod up --key none --no-root
+  resolve_cname
   run bash -c "\"$RT\" inspect \"$CPOD_CNAME\" | grep -i no-new-privileges"
   [ "$status" -eq 0 ]
+  run in_pod 'sudo -n true'
+  [ "$status" -ne 0 ]
 }
 
 @test "--profile locked hardens ~/.claude executable config (settings.json ro)" {
