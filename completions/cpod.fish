@@ -19,6 +19,7 @@ for cmd in cpod claude-pod
     complete -c $cmd -n __fish_use_subcommand -a list    -d 'list containers for this project'
     complete -c $cmd -n __fish_use_subcommand -a status  -d 'container status'
     complete -c $cmd -n __fish_use_subcommand -a build   -d 'build the image'
+    complete -c $cmd -n __fish_use_subcommand -a version -d 'show cpod + runtime/tool versions'
     complete -c $cmd -n __fish_use_subcommand -a help    -d 'show help'
 
     # flags (available anywhere)
@@ -47,5 +48,6 @@ for cmd in cpod claude-pod
     complete -c $cmd -l runtime        -x -a 'podman docker' -d 'container runtime'
     complete -c $cmd -l rebuild        -d 'rebuild the image'
     complete -c $cmd -l all            -d 'list containers of all projects'
+    complete -c $cmd -s V -l version   -d 'show cpod + runtime/tool versions'
     complete -c $cmd -s h -l help      -d 'show help'
 end

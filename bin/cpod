@@ -8,7 +8,7 @@ SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 CPOD_HOME="$(dirname "$(dirname "$SELF")")"
 LIB="${CPOD_HOME}/lib"
 # shellcheck source=/dev/null
-for m in log runtime mounts gpu dind deploykey container; do . "${LIB}/${m}.sh"; done
+for m in log runtime mounts gpu dind deploykey container version; do . "${LIB}/${m}.sh"; done
 
 # ---- defaults ----------------------------------------------------------------
 CPOD_STATE="${CLAUDE_POD_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/claude-pod}"
@@ -66,6 +66,7 @@ ${_C_GRN}Commands:${_C_RST}
   ls|list       list containers for this project (or --all for every one)
   status        status of this project's container
   build         build the image (without starting; --rebuild to rebuild)
+  version       show cpod's version + versions of podman/docker and host tools
   (no command)  smart mode: none -> up, stopped -> start, running -> attach
 
 ${_C_GRN}Trust profiles (presets; any explicit flag still overrides):${_C_RST}
@@ -100,6 +101,7 @@ ${_C_GRN}Other flags:${_C_RST}
   --runtime podman|docker  pick the runtime (default: podman, else docker)
   --rebuild             rebuild the image
   --all                 (for ls) show containers of all projects
+  -V | --version        show cpod + runtime/tool versions, then exit
   -h | --help           this help
 
 ${_C_GRN}Examples:${_C_RST}
@@ -171,9 +173,10 @@ done
 CMD=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    up|start|attach|shell|ls|list|down|stop|status|build|restart|logs|inspect|prune)
+    up|start|attach|shell|ls|list|down|stop|status|build|restart|logs|inspect|prune|version)
       [ -z "$CMD" ] || { log_error "unexpected extra command: $1"; usage; exit 2; }
       CMD="$1"; shift ;;
+    --version|-V) CMD="version"; shift ;;
     exec)
       [ -z "$CMD" ] || { log_error "unexpected extra command: $1"; usage; exit 2; }
       CMD="exec"; shift; CPOD_PASSTHRU=( "$@" ); break ;;   # rest is the command, verbatim
@@ -217,6 +220,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$CMD" = "help" ]; then usage; exit 0; fi
+if [ "$CMD" = "version" ]; then cmd_version; exit 0; fi   # before rt_detect: works with no runtime
 
 case "$CPOD_KEY_MODE" in rw|ro|none) ;; *) log_error "--key must be rw|ro|none (got: '$CPOD_KEY_MODE')"; usage; exit 2 ;; esac
 

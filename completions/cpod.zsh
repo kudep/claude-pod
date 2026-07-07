@@ -31,8 +31,9 @@ _cpod() {
     '--runtime[container runtime]:runtime:(podman docker)' \
     '--rebuild[rebuild the image]' \
     '--all[list containers of all projects]' \
+    '(-V --version)'{-V,--version}'[show cpod + runtime/tool versions]' \
     '(-h --help)'{-h,--help}'[show help]' \
-    '1:command:(up start attach shell restart exec logs inspect stop down prune ls list status build help)'
+    '1:command:(up start attach shell restart exec logs inspect stop down prune ls list status build version help)'
 }
 
 _cpod "$@"

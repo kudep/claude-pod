@@ -79,3 +79,55 @@ setup() { cpod_isolate_state; }
   [ "$status" -eq 0 ]
   [[ "$output" == *"NAME"* ]]
 }
+
+@test "help lists the version command and --version flag" {
+  run cpod -h
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"version"* ]]
+  [[ "$output" == *"--version"* ]]
+}
+
+# `cpod version` prints cpod's own version plus podman/docker (and host tools).
+# It must work WITHOUT a runtime present, so no skip_if_no_runtime here.
+@test "version prints cpod version and lists both runtimes" {
+  run cpod version
+  [ "$status" -eq 0 ]
+  # cpod's own version, straight from the VERSION file.
+  [[ "$output" == *"cpod ${CPOD_VERSION}"* ]]
+  # both runtimes are always listed (installed or not).
+  [[ "$output" == *"podman"* ]]
+  [[ "$output" == *"docker"* ]]
+  # and the supporting host tools it drives.
+  [[ "$output" == *"git"* ]]
+  [[ "$output" == *"ssh"* ]]
+}
+
+@test "--version and -V match the version subcommand" {
+  run cpod version;   local a="$output"
+  run cpod --version; local b="$output"
+  run cpod -V;        local c="$output"
+  [ "$a" = "$b" ]
+  [ "$a" = "$c" ]
+}
+
+# The runtime a plain `cpod up` would pick is tagged "(active)". Under the test
+# matrix CLAUDE_POD_RUNTIME is set per pass, so the active one is $RT.
+@test "version tags the active runtime" {
+  skip_if_no_runtime
+  run cpod version
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"${RT}"*"(active)"* ]]
+}
+
+# An installed runtime reports a real version number, not "not installed".
+@test "version reports an installed runtime's number" {
+  skip_if_no_runtime
+  run cpod version
+  [ "$status" -eq 0 ]
+  # line for the active runtime carries a version-looking token, not "not installed".
+  local line
+  line="$(printf '%s\n' "$output" | grep -E "^[[:space:]]*${RT}[[:space:]]")"
+  [[ "$line" == *"(active)"* ]]
+  [[ "$line" != *"not installed"* ]]
+  [[ "$line" =~ [0-9]+\.[0-9]+ ]]
+}

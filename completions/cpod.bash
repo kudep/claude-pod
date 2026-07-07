@@ -5,11 +5,11 @@ _cpod() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-  local cmds="up start attach shell restart exec logs inspect stop down prune ls list status build help"
+  local cmds="up start attach shell restart exec logs inspect stop down prune ls list status build version help"
   local flags="--profile --key --key-file --claude --run --claude-hardened --inherit-env --env \
                -p --port -v --volume --cache-volume --rm --volumes -f --follow \
                --root --no-root --proxy --net-host --gpu --no-gpu --docker --no-docker --runtime \
-               --rebuild --all --help -h"
+               --rebuild --all --version -V --help -h"
 
   case "$prev" in
     --profile) COMPREPLY=( $(compgen -W "default guarded locked" -- "$cur") ); return ;;
@@ -28,7 +28,7 @@ _cpod() {
   local i
   for (( i=1; i < COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
-      up|start|attach|shell|restart|exec|logs|inspect|stop|down|prune|ls|list|status|build|help) seen_cmd=1; break ;;
+      up|start|attach|shell|restart|exec|logs|inspect|stop|down|prune|ls|list|status|build|version|help) seen_cmd=1; break ;;
     esac
   done
   if [ -z "$seen_cmd" ]; then

@@ -50,6 +50,7 @@ Three lifecycle scenarios:
 | `cpod stop`   | stop the container (without removing it)                        |
 | `cpod down`   | stop, remove the container and **revoke the deploy key** (`--volumes` also drops the cache volume) |
 | `cpod prune`  | remove **stopped** cpod containers (this project, or `--all`), revoking their keys |
+| `cpod version`| show cpod's version + versions of podman/docker and host tools (`-V`/`--version`) |
 
 With no argument, `cpod` picks the mode itself: no container → `up`, stopped → `start`,
 running → `attach`.

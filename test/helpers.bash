@@ -11,6 +11,10 @@ export CLAUDE_POD_RUNTIME="${CPOD_TEST_RUNTIME:-podman}"
 
 RT="${CLAUDE_POD_RUNTIME}"
 
+# cpod's declared version (from the VERSION file) — for the `cpod version` tests.
+CPOD_VERSION="$(tr -d '[:space:]' < "${CPOD_REPO_ROOT}/VERSION" 2>/dev/null || true)"
+export CPOD_VERSION
+
 # Per-test isolated cpod state (keys/containers metadata).
 cpod_isolate_state() { export CLAUDE_POD_STATE="${BATS_TEST_TMPDIR}/state"; }
 
