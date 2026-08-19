@@ -27,11 +27,12 @@ image_ensure() {
   log_info "building image ${IMAGE} (runtime=${RT}, base=${CPOD_BASE_IMAGE})…"
   # Build with host networking so a localhost proxy is reachable; forward proxy
   # vars as predefined build-args (docker/podman do not persist these in the image).
-  local -a proxy_args=() v
+  local -a proxy_args=() cache_args=() v
+  if [ "${CPOD_NO_CACHE:-0}" = "1" ]; then cache_args=( --no-cache ); fi
   for v in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
     [ -n "${!v:-}" ] && proxy_args+=( --build-arg "${v}=${!v}" )
   done
-  rt build --network host "${proxy_args[@]}" \
+  rt build --network host "${cache_args[@]}" "${proxy_args[@]}" \
     --build-arg "BASE_IMAGE=${CPOD_BASE_IMAGE}" \
     --build-arg "HOST_USER=${HOST_USER}" \
     --build-arg "HOST_UID=${HOST_UID}" \

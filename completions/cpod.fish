@@ -47,6 +47,7 @@ for cmd in cpod claude-pod
     complete -c $cmd -l no-docker      -d 'disable docker socket passthrough'
     complete -c $cmd -l runtime        -x -a 'podman docker' -d 'container runtime'
     complete -c $cmd -l rebuild        -d 'rebuild the image'
+    complete -c $cmd -l no-cache       -d 'rebuild the image ignoring the layer cache'
     complete -c $cmd -l all            -d 'list containers of all projects'
     complete -c $cmd -s V -l version   -d 'show cpod + runtime/tool versions'
     complete -c $cmd -s h -l help      -d 'show help'

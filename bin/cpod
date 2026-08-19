@@ -36,6 +36,7 @@ CPOD_DIND="auto"          # auto | on | off
 CPOD_DIND_EXPLICIT=0
 CPOD_ALL=0
 CPOD_REBUILD=0
+CPOD_NO_CACHE=0
 CPOD_BASE_IMAGE="${CPOD_BASE_IMAGE:-nvidia/cuda:12.6.2-runtime-ubuntu24.04}"
 RUN_ARGS=()
 
@@ -65,7 +66,8 @@ ${_C_GRN}Commands:${_C_RST}
                 revoking their deploy keys
   ls|list       list containers for this project (or --all for every one)
   status        status of this project's container
-  build         build the image (without starting; --rebuild to rebuild)
+  build         build the image (without starting; --rebuild to rebuild,
+                --no-cache to rebuild from scratch)
   version       show cpod's version + versions of podman/docker and host tools
   (no command)  smart mode: none -> up, stopped -> start, running -> attach
 
@@ -100,6 +102,8 @@ ${_C_GRN}Other flags:${_C_RST}
   --docker | --no-docker  enable/disable docker socket passthrough (default: auto per project)
   --runtime podman|docker  pick the runtime (default: podman, else docker)
   --rebuild             rebuild the image
+  --no-cache            rebuild the image from scratch, ignoring the layer cache
+                        (implies --rebuild; the way to pick up a newer Claude Code)
   --all                 (for ls) show containers of all projects
   -V | --version        show cpod + runtime/tool versions, then exit
   -h | --help           this help
@@ -118,6 +122,7 @@ ${_C_GRN}Examples:${_C_RST}
   cpod exec bash -lc "ruff check ." # run a quick command without a new pod
   cpod logs -f                      # follow the pod's logs
   cpod down --volumes               # remove the pod, revoke the key, drop the cache volume
+  cpod build --no-cache             # rebuild from scratch — pulls the latest Claude Code
   cpod prune --all                  # clean up stopped pods across all projects
 
 ${_C_GRN}Recommendations:${_C_RST}
@@ -213,6 +218,7 @@ while [ $# -gt 0 ]; do
     --no-docker)    CPOD_DIND=off; CPOD_DIND_EXPLICIT=1; shift ;;
     --all|-a)       CPOD_ALL=1; shift ;;
     --rebuild)      CPOD_REBUILD=1; shift ;;
+    --no-cache)     CPOD_REBUILD=1; CPOD_NO_CACHE=1; shift ;;
     --)             shift; break ;;
     -*)             log_error "unknown flag: $1"; usage; exit 2 ;;
     *)              log_error "unknown argument: $1"; usage; exit 2 ;;

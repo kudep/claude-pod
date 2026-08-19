@@ -30,6 +30,7 @@ _cpod() {
     '--no-docker[disable docker socket passthrough]' \
     '--runtime[container runtime]:runtime:(podman docker)' \
     '--rebuild[rebuild the image]' \
+    '--no-cache[rebuild the image ignoring the layer cache]' \
     '--all[list containers of all projects]' \
     '(-V --version)'{-V,--version}'[show cpod + runtime/tool versions]' \
     '(-h --help)'{-h,--help}'[show help]' \

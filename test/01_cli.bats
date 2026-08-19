@@ -25,6 +25,19 @@ setup() { cpod_isolate_state; }
   [[ "$output" == *"--cache-volume"* ]]
 }
 
+@test "help lists the image rebuild flags" {
+  run cpod -h
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--rebuild"* ]]
+  [[ "$output" == *"--no-cache"* ]]
+}
+
+@test "--no-cache is a known flag and implies a rebuild" {
+  run cpod --no-cache -h
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"unknown flag"* ]]
+}
+
 @test "exec with no container -> error, not a crash" {
   skip_if_no_runtime
   make_project

@@ -9,7 +9,7 @@ _cpod() {
   local flags="--profile --key --key-file --claude --run --claude-hardened --inherit-env --env \
                -p --port -v --volume --cache-volume --rm --volumes -f --follow \
                --root --no-root --proxy --net-host --gpu --no-gpu --docker --no-docker --runtime \
-               --rebuild --all --version -V --help -h"
+               --rebuild --no-cache --all --version -V --help -h"
 
   case "$prev" in
     --profile) COMPREPLY=( $(compgen -W "default guarded locked" -- "$cur") ); return ;;

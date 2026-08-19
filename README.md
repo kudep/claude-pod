@@ -151,7 +151,10 @@ reachable from the bridge. Proxy settings apply at creation — change them via 
   git identity is passed as **values only** (name/email), not your `~/.gitconfig`.
 - **Claude, shared but pinned.** `~/.claude` is mounted so settings/history/sessions carry over;
   `.credentials.json` is **read-only**; `~/.claude.json` is mounted so the pod isn't a fresh
-  install. The pod's Claude **never self-updates** (`DISABLE_AUTOUPDATER=1`).
+  install. The pod's Claude **never self-updates** (`DISABLE_AUTOUPDATER=1`) — its version is the
+  one baked into the image. To move to a newer Claude Code, rebuild the image from scratch:
+  `cpod build --no-cache` (a plain `--rebuild` reuses the cached `npm install` layer), then
+  recreate the container (`cpod down && cpod up`).
 - **Kernel-level hardening.** Non-root login user + empty added capabilities + the runtime's default
   seccomp profile. The **default** profile also gives passwordless `sudo` for setup; `guarded`/`locked`
   drop it and add **`no-new-privileges`** so SUID/SGID can't escalate. The docker socket is **not**
