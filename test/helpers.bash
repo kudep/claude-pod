@@ -5,7 +5,7 @@ CPOD_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="${CPOD_REPO_ROOT}/bin:${PATH}"
 
 # Light base for tests unless overridden; the real default is the CUDA image.
-export CPOD_BASE_IMAGE="${CPOD_BASE_IMAGE:-ubuntu:24.04}"
+export CPOD_BASE_IMAGE="${CPOD_BASE_IMAGE:-docker.io/library/ubuntu:24.04}"
 # Which runtime this pass targets (set by test/run.sh).
 export CLAUDE_POD_RUNTIME="${CPOD_TEST_RUNTIME:-podman}"
 

@@ -1,7 +1,7 @@
 # claude-pod image — Ubuntu/CUDA base + Node (Claude Code) + uv + build toolchain.
 # Built per host so the in-container user matches the host uid/gid/home, which keeps
 # bind-mount ownership correct and the project path identical to the host path.
-ARG BASE_IMAGE=nvidia/cuda:12.6.2-runtime-ubuntu24.04
+ARG BASE_IMAGE=docker.io/nvidia/cuda:12.6.2-runtime-ubuntu24.04
 FROM ${BASE_IMAGE}
 
 ARG HOST_USER=dev
@@ -11,7 +11,7 @@ ARG HOST_HOME=/home/dev
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
-    NODE_MAJOR=20 \
+    NODE_MAJOR=22 \
     DISABLE_AUTOUPDATER=1
 
 # --- base OS packages + toolchain --------------------------------------------
@@ -27,6 +27,9 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # --- Node.js (Claude Code runtime) -------------------------------------------
+# Node 22+: newer Claude Code releases declare engines.node >= 22, and npm silently
+# falls back to the newest engine-compatible version — on Node 20 that pinned the pod
+# to an old claude even after a --no-cache rebuild.
 RUN set -eux; \
     curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -; \
     apt-get install -y --no-install-recommends nodejs; \

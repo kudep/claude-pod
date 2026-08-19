@@ -37,7 +37,9 @@ CPOD_DIND_EXPLICIT=0
 CPOD_ALL=0
 CPOD_REBUILD=0
 CPOD_NO_CACHE=0
-CPOD_BASE_IMAGE="${CPOD_BASE_IMAGE:-nvidia/cuda:12.6.2-runtime-ubuntu24.04}"
+# Fully qualified on purpose: podman resolves short names only via
+# unqualified-search-registries in registries.conf, which many hosts leave empty.
+CPOD_BASE_IMAGE="${CPOD_BASE_IMAGE:-docker.io/nvidia/cuda:12.6.2-runtime-ubuntu24.04}"
 RUN_ARGS=()
 
 # host identity — mirrored into the container so bind-mount ownership & ~/.claude line up
